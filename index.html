@@ -19,7 +19,8 @@
       backdrop-filter: blur(12px);
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
-  </style>
+  </style><!-- 引入 Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="min-h-screen flex flex-col">
 
@@ -153,6 +154,13 @@
 
   <!-- 分类筛选与搜索逻辑 -->
   <script>
+    // ==========================================
+  // 配置 Supabase 凭证
+  // ==========================================
+  const SUPABASE_URL = 'https://pbdgrwokkulcjsyoknhu.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_gWK045iwHBKkGYQJTHY8JA_YiMy4vx8';
+
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const filterBtns = document.querySelectorAll('.filter-btn');
     const cards = document.querySelectorAll('.project-card');
     const searchInput = document.getElementById('search-input');
