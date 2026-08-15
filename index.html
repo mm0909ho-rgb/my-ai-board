@@ -30,7 +30,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo } = React;
 
         // ⚠️ 請填入你的 Supabase 連線資訊 ⚠️
         const SUPABASE_URL = "https://pbdgrwokkulcjsyoknhu.supabase.co";
@@ -44,14 +44,45 @@
         // 密碼格式：固定 6 碼數字
         const PASSWORD_REGEX = /^\d{6}$/;
 
+        // 登入狀態儲存 Key（localStorage 依「網域」各自獨立保存，換網域需各自登入一次）
+        const SESSION_KEY = "ai_dashboard_session";
+
+        const STATUS_LIST = ["規劃", "開發", "測試", "上線", "下線"];
+        const MAX_IMAGES = 3;
+
+        // 單位選項（含三班）
+        const UNIT_OPTIONS = ["JJ-早", "JJ-中", "JJ-晚"];
+        // 從 unit 取得班別（"JJ-早" → "早"），舊資料無班別時退回 shift 欄位
+        const getShift = (u) => {
+            if (u.unit && u.unit.includes('-')) return u.unit.split('-')[1];
+            return u.shift || '';
+        };
+        // 從 unit 取得基礎單位（"JJ-早" → "JJ"）
+        const getBaseUnit = (u) => {
+            if (!u.unit) return 'JJ';
+            return u.unit.split('-')[0];
+        };
+
+        // 解析 image_url：支援舊格式（單一字串）與新格式（JSON 陣列字串），統一回傳陣列
+        const parseImages = (val) => {
+            if (!val) return [];
+            if (typeof val === 'string' && val.trim().startsWith('[')) {
+                try {
+                    const arr = JSON.parse(val);
+                    return Array.isArray(arr) ? arr.filter(Boolean) : [];
+                } catch (e) { return [val]; }
+            }
+            return [val];
+        };
+
         function App() {
             const [currentTab, setCurrentTab] = useState("專案列表");
             const [projects, setProjects] = useState([]);
 
             // 本地模擬模式下的預設帳號（若有接 Supabase，會被 profiles 表資料取代）
             const [users, setUsers] = useState([
-                { id: "1", name: "Admin", account: "admin01", password: "123456", role: "ADMIN", unit: "JJ" },
-                { id: "2", name: "成員 A", account: "usera01", password: "111111", role: "MEMBER", unit: "JJ" }
+                { id: "1", name: "Admin", account: "admin01", password: "123456", role: "ADMIN", unit: "JJ-早", shift: "早", status: "active" },
+                { id: "2", name: "成員 A", account: "usera01", password: "111111", role: "MEMBER", unit: "JJ-中", shift: "中", status: "active" }
             ]);
 
             // ===== 登入狀態 =====
@@ -60,6 +91,7 @@
             const [loginForm, setLoginForm] = useState({ account: "", password: "" });
             const [loginError, setLoginError] = useState("");
             const [loggingIn, setLoggingIn] = useState(false);
+            const [restoring, setRestoring] = useState(true); // 還原登入狀態中
 
             // Modal 控制
             const [showProjectModal, setShowProjectModal] = useState(false);
@@ -69,7 +101,28 @@
             // 目前正在編輯的專案 id（null = 新增模式）
             const [editingProjectId, setEditingProjectId] = useState(null);
 
-            // 發布 / 編輯專案 Form (單位預設 JJ)
+            // 專案詳情頁：目前檢視中的專案 id（null = 顯示列表）
+            const [viewingProjectId, setViewingProjectId] = useState(null);
+            // 圖片放大燈箱
+            const [lightboxUrl, setLightboxUrl] = useState(null);
+
+            // ===== 留言與更新紀錄 =====
+            const [comments, setComments] = useState([]);
+            const [newComment, setNewComment] = useState("");
+            const [postingComment, setPostingComment] = useState(false);
+
+            // ===== 搜尋 / 篩選 =====
+            const [searchText, setSearchText] = useState("");
+            const [filterStatus, setFilterStatus] = useState("全部");
+            const [filterAuthor, setFilterAuthor] = useState("全部");
+            const [filterType, setFilterType] = useState("全部");
+
+            // ===== 編輯成員帳號 Modal =====
+            const [editUserTarget, setEditUserTarget] = useState(null); // 正在編輯的成員
+            const [editUserForm, setEditUserForm] = useState({ name: "", role: "MEMBER", unit: "JJ-早", password: "" });
+            const [editUserSaving, setEditUserSaving] = useState(false);
+
+            // 發布 / 編輯專案 Form（images 為 1~3 張圖的陣列，儲存時打包進 image_url）
             const [newProject, setNewProject] = useState({
                 title: "",
                 type: "小工具",
@@ -77,19 +130,59 @@
                 author: "",
                 status: "規劃",
                 link: "",
-                image_url: "",
+                images: [],
                 pain_point: "",
                 target: "",
-                solution: ""
+                solution: "",
+                progress: ""
             });
 
             // 新增成員 Form
             const [newUser, setNewUser] = useState({
-                name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ", shift: "早"
+                name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ-早", shift: "早"
             });
 
+            // ===== 初始化：還原登入狀態 + 讀取資料 =====
             useEffect(() => {
-                fetchData();
+                const init = async () => {
+                    try {
+                        let saved = null;
+                        try { saved = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (e) {}
+
+                        if (saved && saved.account) {
+                            if (supabase) {
+                                // 重新向資料庫驗證帳號仍存在且未被停用
+                                const { data } = await supabase
+                                    .from('profiles')
+                                    .select('*')
+                                    .eq('account', saved.account)
+                                    .maybeSingle();
+                                if (data && data.status !== 'disabled') {
+                                    setCurrentUser({ id: data.id, name: data.name, role: data.role, account: data.account });
+                                    setIsLoggedIn(true);
+                                } else {
+                                    localStorage.removeItem(SESSION_KEY);
+                                }
+                            } else {
+                                setCurrentUser(saved);
+                                setIsLoggedIn(true);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("還原登入狀態失敗：", e);
+                    } finally {
+                        setRestoring(false);
+                    }
+                    fetchData();
+                };
+                init();
+            }, []);
+
+            // ESC 關閉燈箱
+            useEffect(() => {
+                const onKey = (e) => { if (e.key === "Escape") setLightboxUrl(null); };
+                window.addEventListener("keydown", onKey);
+                return () => window.removeEventListener("keydown", onKey);
             }, []);
 
             const fetchData = async () => {
@@ -99,6 +192,9 @@
                         const { data: userData } = await supabase.from('profiles').select('*');
                         if (projData) setProjects(projData);
                         if (userData && userData.length > 0) setUsers(userData);
+                        // 留言與更新紀錄（若尚未建立 comments 表，讀取失敗不影響其他功能）
+                        const { data: commentData } = await supabase.from('comments').select('*').order('id', { ascending: true });
+                        if (commentData) setComments(commentData);
                     } catch (err) {
                         console.error("讀取失敗：", err);
                     }
@@ -118,6 +214,7 @@
 
                 setLoggingIn(true);
                 try {
+                    let userObj = null;
                     if (supabase) {
                         const { data, error } = await supabase
                             .from('profiles')
@@ -128,18 +225,27 @@
 
                         if (error || !data) {
                             setLoginError("帳號或密碼錯誤");
+                        } else if (data.status === 'disabled') {
+                            setLoginError("此帳號已被停用，請聯絡管理員");
                         } else {
-                            setCurrentUser({ id: data.id, name: data.name, role: data.role, account: data.account });
-                            setIsLoggedIn(true);
+                            userObj = { id: data.id, name: data.name, role: data.role, account: data.account };
                         }
                     } else {
                         const matched = users.find(u => u.account === account && u.password === password);
                         if (!matched) {
                             setLoginError("帳號或密碼錯誤（本地模擬模式）");
+                        } else if (matched.status === 'disabled') {
+                            setLoginError("此帳號已被停用，請聯絡管理員");
                         } else {
-                            setCurrentUser({ id: matched.id, name: matched.name, role: matched.role, account: matched.account });
-                            setIsLoggedIn(true);
+                            userObj = { id: matched.id, name: matched.name, role: matched.role, account: matched.account };
                         }
+                    }
+
+                    if (userObj) {
+                        setCurrentUser(userObj);
+                        setIsLoggedIn(true);
+                        // 記住登入狀態（重新整理不會登出）
+                        try { localStorage.setItem(SESSION_KEY, JSON.stringify(userObj)); } catch (e) {}
                     }
                 } catch (err) {
                     setLoginError("登入時發生錯誤，請稍後再試");
@@ -155,6 +261,8 @@
                     setLoginForm({ account: "", password: "" });
                     setLoginError("");
                     setCurrentTab("專案列表");
+                    setViewingProjectId(null);
+                    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
                 }
             };
 
@@ -164,14 +272,13 @@
                 return item.author === currentUser.name || currentUser.role === "ADMIN";
             };
 
-            // ⚡ 圖片自動等比例壓縮 (最高 800px，品質 70%)，防止傳輸過大失敗
-            const handleImageUpload = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
+            // ⚡ 圖片自動等比例壓縮 (最高 800px，品質 70%)，回傳 Promise<base64>
+            const compressImage = (file) => new Promise((resolve, reject) => {
                 const reader = new FileReader();
+                reader.onerror = () => reject(new Error("讀取圖片失敗"));
                 reader.onload = (event) => {
                     const img = new Image();
+                    img.onerror = () => reject(new Error("圖片格式不支援"));
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
                         let width = img.width;
@@ -192,14 +299,49 @@
                         canvas.height = height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
-
-                        // 轉成壓縮後的 JPEG Base64
-                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
-                        setNewProject(prev => ({ ...prev, image_url: compressedBase64 }));
+                        resolve(canvas.toDataURL('image/jpeg', 0.7));
                     };
                     img.src = event.target.result;
                 };
                 reader.readAsDataURL(file);
+            });
+
+            // 上傳 1~3 張圖片（可一次多選）
+            const handleImageUpload = async (e) => {
+                const files = Array.from(e.target.files || []);
+                e.target.value = ""; // 允許重複選同一檔案
+                if (!files.length) return;
+
+                const remaining = MAX_IMAGES - newProject.images.length;
+                if (remaining <= 0) {
+                    alert(`最多只能上傳 ${MAX_IMAGES} 張圖片，請先刪除不要的圖片`);
+                    return;
+                }
+                if (files.length > remaining) {
+                    alert(`最多 ${MAX_IMAGES} 張，將只加入前 ${remaining} 張`);
+                }
+
+                try {
+                    const toProcess = files.slice(0, remaining);
+                    const results = [];
+                    for (const f of toProcess) {
+                        results.push(await compressImage(f));
+                    }
+                    setNewProject(prev => ({
+                        ...prev,
+                        images: [...prev.images, ...results].slice(0, MAX_IMAGES)
+                    }));
+                } catch (err) {
+                    alert("圖片處理失敗：" + err.message);
+                }
+            };
+
+            // 刪除某一張已上傳的圖片
+            const handleRemoveImage = (idx) => {
+                setNewProject(prev => ({
+                    ...prev,
+                    images: prev.images.filter((_, i) => i !== idx)
+                }));
             };
 
             // 開啟「編輯專案」彈窗，帶入既有資料
@@ -212,10 +354,11 @@
                     author: item.author || "",
                     status: item.status || "規劃",
                     link: item.link || "",
-                    image_url: item.image_url || "",
+                    images: parseImages(item.image_url),
                     pain_point: item.pain_point || "",
                     target: item.target || "",
-                    solution: item.solution || ""
+                    solution: item.solution || "",
+                    progress: item.progress || ""
                 });
                 setEditingProjectId(item.id);
                 setShowProjectModal(true);
@@ -226,6 +369,15 @@
                 setShowProjectModal(false);
                 setEditingProjectId(null);
                 resetProjectForm();
+            };
+
+            // 將表單狀態轉為資料庫欄位（images 陣列 → image_url 字串）
+            const buildProjectPayload = (form) => {
+                const { images, ...rest } = form;
+                return {
+                    ...rest,
+                    image_url: images && images.length > 0 ? JSON.stringify(images) : ""
+                };
             };
 
             // 發布 或 更新 專案
@@ -246,7 +398,7 @@
                         }
 
                         const updates = {
-                            ...newProject,
+                            ...buildProjectPayload(newProject),
                             launch_date: newProject.status === "上線"
                                 ? (original && original.launch_date && original.launch_date !== "-" ? original.launch_date : new Date().toLocaleDateString())
                                 : "-"
@@ -255,21 +407,28 @@
                         if (supabase) {
                             const { data, error } = await supabase.from('projects').update(updates).eq('id', editingProjectId).select();
                             if (error) {
-                                alert("更新失敗：" + error.message);
+                                alert("更新失敗：" + error.message + "\n\n（若錯誤為找不到 progress 欄位，請先到 Supabase 為 projects 表新增 progress 欄位）");
                             } else {
                                 setProjects(projects.map(p => p.id === editingProjectId ? { ...p, ...updates } : p));
+                                // 狀態有變更時，自動寫入系統更新紀錄
+                                if (original && original.status !== newProject.status) {
+                                    insertComment(editingProjectId, `狀態由「${original.status}」變更為「${newProject.status}」`, 'system').catch(() => {});
+                                }
                                 handleCloseProjectModal();
                                 alert("✅ 已更新專案");
                             }
                         } else {
                             setProjects(projects.map(p => p.id === editingProjectId ? { ...p, ...updates } : p));
+                            if (original && original.status !== newProject.status) {
+                                insertComment(editingProjectId, `狀態由「${original.status}」變更為「${newProject.status}」`, 'system').catch(() => {});
+                            }
                             handleCloseProjectModal();
                             alert("✅ (本地模擬) 已更新專案");
                         }
                     } else {
                         // ===== 新增專案 =====
                         const item = {
-                            ...newProject,
+                            ...buildProjectPayload(newProject),
                             author: newProject.author || currentUser.name,
                             start_date: new Date().toLocaleDateString(),
                             launch_date: newProject.status === "上線" ? new Date().toLocaleDateString() : "-"
@@ -313,8 +472,12 @@
                             alert("刪除失敗：" + error.message);
                             return;
                         }
+                        // 一併刪除該專案的留言紀錄（失敗不影響主要流程）
+                        try { await supabase.from('comments').delete().eq('project_id', item.id); } catch (e) {}
                     }
                     setProjects(projects.filter(p => p.id !== item.id));
+                    setComments(prev => prev.filter(c => c.project_id !== item.id));
+                    if (viewingProjectId === item.id) setViewingProjectId(null);
                 } catch (err) {
                     alert("刪除失敗，請確認連線是否正常！\n" + err.message);
                 }
@@ -323,7 +486,7 @@
             const resetProjectForm = () => {
                 setNewProject({
                     title: "", type: "小工具", dept: "JJ", author: "", status: "規劃",
-                    link: "", image_url: "", pain_point: "", target: "", solution: ""
+                    link: "", images: [], pain_point: "", target: "", solution: "", progress: ""
                 });
             };
 
@@ -346,7 +509,9 @@
                     return alert("此帳號已被使用，請更換其他帳號");
                 }
 
-                const userItem = { ...newUser, status: 'active' };
+                // 班別依單位自動帶入（JJ-早 → 早）
+                const shift = newUser.unit.includes('-') ? newUser.unit.split('-')[1] : '早';
+                const userItem = { ...newUser, shift, status: 'active' };
 
                 if (supabase) {
                     const { data, error } = await supabase.from('profiles').insert([userItem]).select();
@@ -355,16 +520,262 @@
                     } else if (data) {
                         setUsers([...users, data[0]]);
                         setShowUserModal(false);
-                        setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ", shift: "早" });
+                        setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ-早", shift: "早" });
                         alert("🎉 成員帳號新增成功！");
                     }
                 } else {
                     setUsers([...users, { id: String(users.length + 1), ...userItem }]);
                     setShowUserModal(false);
-                    setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ", shift: "早" });
+                    setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ-早", shift: "早" });
                     alert("🎉 (本地模擬) 成員帳號新增成功！");
                 }
             };
+
+            // ===== 帳號管理：停用 / 啟用 =====
+            const handleToggleUserStatus = async (u) => {
+                if (currentUser.role !== "ADMIN") return alert("僅管理員可操作");
+                if (u.account === currentUser.account) return alert("不能停用自己的帳號");
+
+                const isDisabled = u.status === 'disabled';
+                const nextStatus = isDisabled ? 'active' : 'disabled';
+                const actionText = isDisabled ? '啟用' : '停用';
+                if (!confirm(`確定要${actionText}帳號「${u.name}（${u.account}）」嗎？`)) return;
+
+                try {
+                    if (supabase) {
+                        const { error } = await supabase.from('profiles').update({ status: nextStatus }).eq('id', u.id);
+                        if (error) {
+                            alert(`${actionText}失敗：` + error.message + "\n\n（若錯誤為找不到 status 欄位，請先到 Supabase 為 profiles 表新增 status 欄位）");
+                            return;
+                        }
+                    }
+                    setUsers(users.map(x => x.id === u.id ? { ...x, status: nextStatus } : x));
+                    alert(`✅ 已${actionText}帳號「${u.name}」`);
+                } catch (err) {
+                    alert(`${actionText}失敗，請確認連線是否正常！\n` + err.message);
+                }
+            };
+
+            // ===== 帳號管理：開啟編輯成員彈窗 =====
+            const handleOpenEditUser = (u) => {
+                setEditUserTarget(u);
+                setEditUserForm({
+                    name: u.name || "",
+                    role: u.role || "MEMBER",
+                    unit: UNIT_OPTIONS.includes(u.unit) ? u.unit : "JJ-早",
+                    password: "" // 留空 = 不變更
+                });
+            };
+
+            // ===== 帳號管理：儲存成員編輯（暱稱／權限／單位／密碼） =====
+            const handleSaveEditUser = async (e) => {
+                e.preventDefault();
+                if (!editUserTarget) return;
+                if (currentUser.role !== "ADMIN") return alert("僅管理員可操作");
+
+                const newName = editUserForm.name.trim();
+                if (!newName) return alert("暱稱不可為空");
+                if (editUserForm.password && !PASSWORD_REGEX.test(editUserForm.password)) {
+                    return alert("密碼格式錯誤：需為 6 位數字（留空則不變更）");
+                }
+                // 不能把自己降為 MEMBER，避免失去管理權限後無法操作
+                if (editUserTarget.account === currentUser.account && editUserForm.role !== "ADMIN") {
+                    return alert("不能移除自己的管理員權限");
+                }
+
+                const shift = editUserForm.unit.includes('-') ? editUserForm.unit.split('-')[1] : '早';
+                const updates = {
+                    name: newName,
+                    role: editUserForm.role,
+                    unit: editUserForm.unit,
+                    shift
+                };
+                if (editUserForm.password) updates.password = editUserForm.password;
+
+                const oldName = editUserTarget.name;
+                const nameChanged = oldName !== newName;
+
+                setEditUserSaving(true);
+                try {
+                    if (supabase) {
+                        const { error } = await supabase.from('profiles').update(updates).eq('id', editUserTarget.id);
+                        if (error) {
+                            alert("儲存失敗：" + error.message);
+                            setEditUserSaving(false);
+                            return;
+                        }
+                        // 暱稱變更時，同步更新該成員名下所有專案的負責人名稱
+                        if (nameChanged) {
+                            const { error: projErr } = await supabase.from('projects').update({ author: newName }).eq('author', oldName);
+                            if (projErr) console.error("同步專案負責人失敗：", projErr);
+                        }
+                    }
+                    setUsers(users.map(x => x.id === editUserTarget.id ? { ...x, ...updates } : x));
+                    if (nameChanged) {
+                        setProjects(projects.map(p => p.author === oldName ? { ...p, author: newName } : p));
+                        // 若改的是自己，同步更新目前登入者顯示名稱與 localStorage
+                        if (editUserTarget.account === currentUser.account) {
+                            const updatedSelf = { ...currentUser, name: newName };
+                            setCurrentUser(updatedSelf);
+                            try { localStorage.setItem(SESSION_KEY, JSON.stringify(updatedSelf)); } catch (e) {}
+                        }
+                    }
+                    setEditUserTarget(null);
+                    alert("✅ 已儲存成員資料");
+                } catch (err) {
+                    alert("儲存失敗，請確認連線是否正常！\n" + err.message);
+                } finally {
+                    setEditUserSaving(false);
+                }
+            };
+
+            // ===== 帳號管理：刪除成員帳號 =====
+            const handleDeleteUser = async (u) => {
+                if (currentUser.role !== "ADMIN") return alert("僅管理員可操作");
+                if (u.account === currentUser.account) return alert("不能刪除自己的帳號");
+                // 帳號若仍是某專案的負責人則無法刪除
+                if (projects.some(p => p.author === u.name)) {
+                    return alert(`「${u.name}」仍是某些專案的負責人，無法刪除。\n請先刪除其專案或將專案轉移給其他人（可改用「停用」）。`);
+                }
+                if (!confirm(`確定要刪除帳號「${u.name}（${u.account}）」嗎？此動作無法復原。`)) return;
+
+                try {
+                    if (supabase) {
+                        const { error } = await supabase.from('profiles').delete().eq('id', u.id);
+                        if (error) {
+                            alert("刪除失敗：" + error.message);
+                            return;
+                        }
+                    }
+                    setUsers(users.filter(x => x.id !== u.id));
+                    setEditUserTarget(null);
+                    alert(`✅ 已刪除帳號「${u.name}」`);
+                } catch (err) {
+                    alert("刪除失敗，請確認連線是否正常！\n" + err.message);
+                }
+            };
+
+            // ===== 留言與更新紀錄 =====
+            const insertComment = async (projectId, content, kind) => {
+                const item = {
+                    project_id: projectId,
+                    author: currentUser ? currentUser.name : "",
+                    content,
+                    kind,
+                    created_at: new Date().toISOString()
+                };
+                if (supabase) {
+                    const { data, error } = await supabase.from('comments').insert([item]).select();
+                    if (error) throw error;
+                    if (data) setComments(prev => [...prev, data[0]]);
+                } else {
+                    setComments(prev => [...prev, { id: Date.now(), ...item }]);
+                }
+            };
+
+            const handlePostComment = async () => {
+                const content = newComment.trim();
+                if (!content || !viewingProject) return;
+                setPostingComment(true);
+                try {
+                    await insertComment(viewingProject.id, content, 'comment');
+                    setNewComment("");
+                } catch (err) {
+                    alert("留言失敗：" + err.message + "\n\n（若錯誤為找不到 comments 表，請先到 Supabase 建立 comments 表）");
+                } finally {
+                    setPostingComment(false);
+                }
+            };
+
+            // 留言刪除權限：留言者本人或 ADMIN
+            const canDeleteComment = (c) => {
+                if (!currentUser) return false;
+                return c.author === currentUser.name || currentUser.role === "ADMIN";
+            };
+
+            const handleDeleteComment = async (c) => {
+                if (!canDeleteComment(c)) return;
+                if (!confirm("確定要刪除這則紀錄嗎？")) return;
+                try {
+                    if (supabase) {
+                        const { error } = await supabase.from('comments').delete().eq('id', c.id);
+                        if (error) { alert("刪除失敗：" + error.message); return; }
+                    }
+                    setComments(prev => prev.filter(x => x.id !== c.id));
+                } catch (err) {
+                    alert("刪除失敗：" + err.message);
+                }
+            };
+
+            const formatTime = (t) => {
+                if (!t) return "";
+                try { return new Date(t).toLocaleString('zh-TW', { hour12: false }); } catch (e) { return String(t); }
+            };
+
+            // ===== 專案搜尋 / 篩選 =====
+            const filteredProjects = useMemo(() => {
+                const kw = searchText.trim().toLowerCase();
+                return projects.filter(p => {
+                    if (filterStatus !== "全部" && p.status !== filterStatus) return false;
+                    if (filterAuthor !== "全部" && p.author !== filterAuthor) return false;
+                    if (filterType !== "全部" && p.type !== filterType) return false;
+                    if (kw) {
+                        const hay = [p.title, p.author, p.dept, p.pain_point, p.target, p.solution, p.progress]
+                            .filter(Boolean).join(" ").toLowerCase();
+                        if (!hay.includes(kw)) return false;
+                    }
+                    return true;
+                });
+            }, [projects, searchText, filterStatus, filterAuthor, filterType]);
+
+            const hasActiveFilter = searchText.trim() !== "" || filterStatus !== "全部" || filterAuthor !== "全部" || filterType !== "全部";
+            const clearFilters = () => { setSearchText(""); setFilterStatus("全部"); setFilterAuthor("全部"); setFilterType("全部"); };
+
+            // ===== 單位成員：依成員統整專案（依上線數排名） =====
+            const memberStats = useMemo(() => {
+                const list = users.map(u => {
+                    const ps = projects.filter(p => p.author === u.name);
+                    const counts = {};
+                    STATUS_LIST.forEach(s => counts[s] = ps.filter(p => p.status === s).length);
+                    return { user: u, projects: ps, counts, total: ps.length };
+                }).sort((a, b) => (b.counts["上線"] - a.counts["上線"]) || (b.total - a.total));
+                // 全體排名
+                return list.map((m, i) => ({ ...m, rank: i + 1 }));
+            }, [users, projects]);
+
+            // 依「基礎單位」分組（JJ-早/中/晚 都歸在 JJ 底下，卡片上顯示班別徽章）
+            const unitGroups = useMemo(() => {
+                const groups = {};
+                memberStats.forEach(m => {
+                    const unit = getBaseUnit(m.user);
+                    if (!groups[unit]) groups[unit] = [];
+                    groups[unit].push(m);
+                });
+                return groups;
+            }, [memberStats]);
+
+            const viewingProject = viewingProjectId != null
+                ? projects.find(p => p.id === viewingProjectId)
+                : null;
+
+            // 開啟專案詳情（供列表卡片、成員頁的專案項目共用）
+            const openProjectDetail = (item) => {
+                setViewingProjectId(item.id);
+                setCurrentTab("專案列表");
+                window.scrollTo(0, 0);
+            };
+
+            // ===== 還原登入狀態中：顯示載入畫面，避免閃一下登入頁 =====
+            if (restoring) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="text-center">
+                            <span className="font-black text-xl bg-emerald-500 text-black px-3 py-1.5 rounded inline-block">AI 成果</span>
+                            <p className="text-gray-500 text-sm mt-4">載入中...</p>
+                        </div>
+                    </div>
+                );
+            }
 
             // ===== 尚未登入：顯示登入畫面 =====
             if (!isLoggedIn) {
@@ -436,8 +847,8 @@
                                 {visibleTabs.map(tab => (
                                     <button
                                         key={tab}
-                                        onClick={() => setCurrentTab(tab)}
-                                        className={`px-4 py-1.5 rounded-full font-medium text-sm transition-all ${currentTab === tab ? 'bg-emerald-500 text-black font-bold' : 'text-gray-300 hover:bg-[#21262d]'}`}
+                                        onClick={() => { setCurrentTab(tab); setViewingProjectId(null); }}
+                                        className={`px-4 py-1.5 rounded-full font-medium text-sm transition-all ${currentTab === tab && !viewingProject ? 'bg-emerald-500 text-black font-bold' : 'text-gray-300 hover:bg-[#21262d]'}`}
                                     >
                                         {tab}
                                     </button>
@@ -462,26 +873,223 @@
                         </div>
                     </nav>
 
-                    {/* 專案列表 */}
-                    {currentTab === "專案列表" && (
+                    {/* ===== 專案詳情頁 ===== */}
+                    {currentTab === "專案列表" && viewingProject && (() => {
+                        const detailImages = parseImages(viewingProject.image_url);
+                        return (
+                        <div className="p-6 max-w-5xl mx-auto">
+                            <div className="mb-6">
+                                <h1 className="text-2xl font-bold mb-1 text-white">專案詳情<span className="text-emerald-400">.</span></h1>
+                                <p className="text-gray-400 text-sm">深入了解這個專案的來龍去脈與成效</p>
+                            </div>
+
+                            <button
+                                onClick={() => setViewingProjectId(null)}
+                                className="text-sm text-gray-400 hover:text-white mb-5 flex items-center gap-1"
+                            >
+                                ‹ 返回列表
+                            </button>
+
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <h2 className="text-2xl font-black text-white">{viewingProject.title}</h2>
+                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#21262d] text-gray-300 border border-gray-700">{viewingProject.type || '小工具'}</span>
+                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${viewingProject.status}`}>● {viewingProject.status}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {viewingProject.link && (
+                                        <a href={viewingProject.link} target="_blank" className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-4 py-2 rounded-xl text-sm">🌐 前端連結</a>
+                                    )}
+                                    {canManageProject(viewingProject) && (
+                                        <React.Fragment>
+                                            <button onClick={() => handleOpenEditProject(viewingProject)} className="text-sm bg-[#21262d] hover:bg-[#30363d] text-gray-300 px-3 py-2 rounded-xl border border-gray-700">✏️ 編輯</button>
+                                            <button onClick={() => handleDeleteProject(viewingProject)} className="text-sm bg-red-950/60 hover:bg-red-900 text-red-400 px-3 py-2 rounded-xl border border-red-800/80">🗑️ 刪除</button>
+                                        </React.Fragment>
+                                    )}
+                                </div>
+                            </div>
+
+                            <p className="text-sm text-gray-400 mb-6">
+                                負責人 {viewingProject.dept || 'JJ'}・{viewingProject.author}
+                                {viewingProject.start_date && <span> ・ 啟動於 {viewingProject.start_date}</span>}
+                                {viewingProject.launch_date && viewingProject.launch_date !== "-" && <span> ・ 上線於 {viewingProject.launch_date}</span>}
+                            </p>
+
+                            <div className="dark-card rounded-2xl p-6 space-y-6">
+                                <div className="flex gap-4">
+                                    <div className="w-1 rounded bg-red-500 shrink-0"></div>
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-sm text-red-400 mb-2">🚨 想解決什麼（痛點描述）</h3>
+                                        <p className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">{viewingProject.pain_point || "無"}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-4">
+                                    <div className="w-1 rounded bg-blue-500 shrink-0"></div>
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-sm text-blue-400 mb-2">🎯 預期目標</h3>
+                                        <p className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">{viewingProject.target || "無"}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-4">
+                                    <div className="w-1 rounded bg-emerald-500 shrink-0"></div>
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-sm text-emerald-400 mb-2">⚡ 我們怎麼做（優化方法）</h3>
+                                        <p className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">{viewingProject.solution || "無"}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-4">
+                                    <div className="w-1 rounded bg-yellow-500 shrink-0"></div>
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-sm text-yellow-400 mb-2">📈 目前進展</h3>
+                                        <p className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">{viewingProject.progress || "無"}</p>
+                                    </div>
+                                </div>
+
+                                {detailImages.length > 0 && (
+                                    <div className="pt-2 border-t border-gray-800">
+                                        <h3 className="font-bold text-sm text-gray-400 mb-2">📷 成果展示（點圖可放大）</h3>
+                                        <div className="flex flex-wrap gap-3">
+                                            {detailImages.map((img, i) => (
+                                                <img
+                                                    key={i}
+                                                    src={img}
+                                                    alt={`成果展示 ${i + 1}`}
+                                                    onClick={() => setLightboxUrl(img)}
+                                                    className="max-h-72 rounded-lg border border-gray-700 object-contain cursor-zoom-in hover:opacity-90 transition-opacity"
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 💬 留言與更新紀錄 */}
+                            <div className="dark-card rounded-2xl p-6 mt-4">
+                                <h3 className="font-bold text-sm text-gray-300 mb-4">
+                                    💬 留言與更新紀錄
+                                    <span className="text-gray-500 font-normal ml-1">({comments.filter(c => c.project_id === viewingProject.id).length})</span>
+                                </h3>
+
+                                <div className="flex gap-2 mb-5">
+                                    <input
+                                        type="text"
+                                        className="flex-1 p-2.5 rounded-lg dark-input text-sm"
+                                        placeholder="留言或記錄一筆進度更新...（Enter 送出）"
+                                        value={newComment}
+                                        onChange={e => setNewComment(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') handlePostComment(); }}
+                                    />
+                                    <button
+                                        onClick={handlePostComment}
+                                        disabled={postingComment || !newComment.trim()}
+                                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm rounded-lg disabled:opacity-40"
+                                    >
+                                        {postingComment ? '送出中...' : '送出'}
+                                    </button>
+                                </div>
+
+                                {(() => {
+                                    const list = comments.filter(c => c.project_id === viewingProject.id).slice().reverse();
+                                    if (list.length === 0) {
+                                        return <p className="text-xs text-gray-600 text-center py-4">尚無留言，記錄第一筆更新吧</p>;
+                                    }
+                                    return (
+                                        <ul className="space-y-3">
+                                            {list.map(c => (
+                                                <li key={c.id} className={`rounded-lg p-3 border ${c.kind === 'system' ? 'bg-[#0d1117] border-gray-800' : 'bg-[#21262d]/60 border-gray-700'}`}>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-xs font-bold text-gray-300">
+                                                            {c.kind === 'system' ? '🔄 系統紀錄' : `💬 ${c.author}`}
+                                                        </span>
+                                                        <span className="flex items-center gap-2 text-[11px] text-gray-500">
+                                                            {formatTime(c.created_at)}
+                                                            {canDeleteComment(c) && (
+                                                                <button onClick={() => handleDeleteComment(c)} className="text-red-400 hover:text-red-300">刪除</button>
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                    <p className={`text-sm whitespace-pre-wrap ${c.kind === 'system' ? 'text-gray-400' : 'text-gray-200'}`}>
+                                                        {c.kind === 'system' && c.author ? `${c.author}：` : ''}{c.content}
+                                                    </p>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+                        );
+                    })()}
+
+                    {/* ===== 專案列表 ===== */}
+                    {currentTab === "專案列表" && !viewingProject && (
                         <div className="p-6 max-w-7xl mx-auto">
                             <div className="mb-6">
                                 <h1 className="text-2xl font-bold mb-1 text-white">專案列表<span className="text-emerald-400">.</span></h1>
-                                <p className="text-gray-400 text-sm">追蹤每個 AI 工具的進度、痛點與實際改善成果</p>
+                                <p className="text-gray-400 text-sm">追蹤每個 AI 工具的進度、痛點與實際改善成果（點卡片可查看詳情）</p>
+                            </div>
+
+                            {/* 🔍 搜尋 / 篩選列 */}
+                            <div className="dark-card rounded-xl p-4 mb-4 space-y-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <input
+                                        type="text"
+                                        className="flex-1 min-w-[200px] p-2.5 rounded-lg dark-input text-sm"
+                                        placeholder="🔍 搜尋專案名稱、負責人、內容關鍵字..."
+                                        value={searchText}
+                                        onChange={e => setSearchText(e.target.value)}
+                                    />
+                                    <select className="p-2.5 rounded-lg dark-input text-sm" value={filterAuthor} onChange={e => setFilterAuthor(e.target.value)}>
+                                        <option value="全部">負責人：全部</option>
+                                        {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                                    </select>
+                                    <select className="p-2.5 rounded-lg dark-input text-sm" value={filterType} onChange={e => setFilterType(e.target.value)}>
+                                        <option value="全部">類型：全部</option>
+                                        <option value="小工具">小工具</option>
+                                        <option value="專案">專案</option>
+                                    </select>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {["全部", ...STATUS_LIST].map(s => (
+                                        <button
+                                            key={s}
+                                            onClick={() => setFilterStatus(s)}
+                                            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${filterStatus === s
+                                                ? 'bg-emerald-500 text-black border-emerald-500'
+                                                : (s === "全部" ? 'bg-[#21262d] text-gray-400 border-gray-700 hover:bg-[#30363d]' : `tag-status-${s} hover:opacity-80`)}`}
+                                        >
+                                            {s}{s !== "全部" ? ` ${projects.filter(p => p.status === s).length}` : ''}
+                                        </button>
+                                    ))}
+                                    <span className="text-xs text-gray-500 ml-auto flex items-center gap-2">
+                                        顯示 {filteredProjects.length} / {projects.length} 筆
+                                        {hasActiveFilter && (
+                                            <button onClick={clearFilters} className="text-emerald-400 hover:underline">清除篩選</button>
+                                        )}
+                                    </span>
+                                </div>
                             </div>
 
                             {projects.length === 0 ? (
                                 <div className="dark-card rounded-xl p-12 text-center text-gray-500">尚無專案資料，點選右上角「+ 發布 AI 專案」新增</div>
+                            ) : filteredProjects.length === 0 ? (
+                                <div className="dark-card rounded-xl p-12 text-center text-gray-500">沒有符合條件的專案，試試調整搜尋或篩選條件</div>
                             ) : (
                                 <div className="space-y-4">
-                                    {projects.map(item => (
-                                        <div key={item.id} className="dark-card rounded-xl p-5 shadow-lg border border-gray-800">
+                                    {filteredProjects.map(item => {
+                                        const cardImages = parseImages(item.image_url);
+                                        return (
+                                        <div
+                                            key={item.id}
+                                            onClick={() => openProjectDetail(item)}
+                                            className="dark-card rounded-xl p-5 shadow-lg border border-gray-800 cursor-pointer hover:border-emerald-600/60 transition-colors"
+                                        >
                                             <div className="flex items-center justify-between pb-3 border-b border-gray-800">
                                                 <div>
                                                     <h3 className="font-bold text-lg text-white">{item.title}</h3>
-                                                    <p className="text-xs text-gray-400 mt-1">{item.dept} · 負責人：{item.author}</p>
+                                                    <p className="text-xs text-gray-400 mt-1">{item.dept} · 負責人：{item.author} · 💬 {comments.filter(c => c.project_id === item.id).length}</p>
                                                 </div>
-                                                <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
                                                     <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${item.status}`}>● {item.status}</span>
                                                     {item.link && (
                                                         <a href={item.link} target="_blank" className="text-xs text-blue-400 hover:underline">🌐 開啟網址</a>
@@ -507,48 +1115,122 @@
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-3 text-xs bg-[#0d1117] p-3 rounded-lg border border-gray-800">
-                                                <div><span className="text-red-400 font-bold block mb-1">🚨 痛點描述：</span><p className="text-gray-300">{item.pain_point || "無"}</p></div>
-                                                <div><span className="text-blue-400 font-bold block mb-1">🎯 預期目標：</span><p className="text-gray-300">{item.target || "無"}</p></div>
-                                                <div><span className="text-emerald-400 font-bold block mb-1">⚡ 優化方法：</span><p className="text-gray-300">{item.solution || "無"}</p></div>
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 my-3 text-xs bg-[#0d1117] p-3 rounded-lg border border-gray-800">
+                                                <div><span className="text-red-400 font-bold block mb-1">🚨 痛點描述：</span><p className="text-gray-300 line-clamp-2">{item.pain_point || "無"}</p></div>
+                                                <div><span className="text-blue-400 font-bold block mb-1">🎯 預期目標：</span><p className="text-gray-300 line-clamp-2">{item.target || "無"}</p></div>
+                                                <div><span className="text-emerald-400 font-bold block mb-1">⚡ 優化方法：</span><p className="text-gray-300 line-clamp-2">{item.solution || "無"}</p></div>
+                                                <div><span className="text-yellow-400 font-bold block mb-1">📈 目前進展：</span><p className="text-gray-300 line-clamp-2">{item.progress || "無"}</p></div>
                                             </div>
 
-                                            {item.image_url && (
-                                                <div className="mt-3">
-                                                    <img src={item.image_url} alt="成果展示" className="max-h-56 rounded-lg border border-gray-700 object-cover" />
+                                            {cardImages.length > 0 && (
+                                                <div className="mt-3 flex flex-wrap gap-2" onClick={e => e.stopPropagation()}>
+                                                    {cardImages.map((img, i) => (
+                                                        <img
+                                                            key={i}
+                                                            src={img}
+                                                            alt={`成果展示 ${i + 1}`}
+                                                            onClick={() => setLightboxUrl(img)}
+                                                            className="max-h-40 rounded-lg border border-gray-700 object-cover cursor-zoom-in hover:opacity-90 transition-opacity"
+                                                            title="點擊放大"
+                                                        />
+                                                    ))}
                                                 </div>
                                             )}
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* 單位成員 */}
+                    {/* ===== 單位成員：統整每位成員的專案成果 ===== */}
                     {currentTab === "單位成員" && (
                         <div className="p-6 max-w-7xl mx-auto">
-                            <h1 className="text-2xl font-bold mb-4 text-white">單位成員<span className="text-emerald-400">.</span></h1>
-                            <div className="dark-card rounded-xl p-6">
-                                <ul className="divide-y divide-gray-800">
-                                    {users.map(u => (
-                                        <li key={u.id} className="py-3 flex justify-between items-center">
-                                            <span className="font-bold text-gray-200">{u.name} ({u.account})</span>
-                                            <span className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded">{u.unit || 'JJ'}</span>
-                                        </li>
-                                    ))}
-                                </ul>
+                            <div className="mb-6">
+                                <h1 className="text-2xl font-bold mb-1 text-white">單位成員<span className="text-emerald-400">.</span></h1>
+                                <p className="text-gray-400 text-sm">統整每位成員發布的 AI 專案成果，依上線數排名（點專案可查看詳情）</p>
                             </div>
+
+                            {Object.keys(unitGroups).map(unit => {
+                                const members = unitGroups[unit];
+                                const unitCounts = {};
+                                STATUS_LIST.forEach(s => unitCounts[s] = members.reduce((sum, m) => sum + m.counts[s], 0));
+                                return (
+                                    <div key={unit} className="mb-8">
+                                        {/* 單位標題 + 總覽 */}
+                                        <div className="dark-card rounded-xl p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-2xl font-black text-white">{unit}</span>
+                                                <span className="text-xs text-gray-500">成員成果・依上線數排名・{members.length} 位</span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                                                {STATUS_LIST.map(s => (
+                                                    <span key={s} className={`px-2 py-0.5 rounded-full tag-status-${s}`}>{s} {unitCounts[s]}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* 成員卡片 */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                            {members.map(m => (
+                                                <div key={m.user.id} className="dark-card rounded-xl p-4 flex flex-col">
+                                                    <div className="flex items-start justify-between pb-3 border-b border-gray-800">
+                                                        <div className="flex items-center gap-2">
+                                                            {getShift(m.user) && (
+                                                                <span className="w-8 h-8 rounded-lg bg-[#21262d] border border-gray-700 flex items-center justify-center text-xs font-bold text-emerald-400">{getShift(m.user)}</span>
+                                                            )}
+                                                            <div>
+                                                                <div className="font-bold text-white flex items-center gap-1.5">
+                                                                    {m.user.name}
+                                                                    <span className="text-[11px] text-gray-500 font-normal">#{m.rank}</span>
+                                                                </div>
+                                                                <div className="text-[11px] text-gray-500 mt-0.5">
+                                                                    {STATUS_LIST.map(s => `${m.counts[s]}${s}`).join('・')}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            <div className="text-2xl font-black text-white leading-none">{m.total}</div>
+                                                            <div className="text-[11px] text-gray-500">項目</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {m.projects.length === 0 ? (
+                                                        <p className="text-xs text-gray-600 py-4 text-center">尚無發布專案</p>
+                                                    ) : (
+                                                        <ul className="divide-y divide-gray-800/70">
+                                                            {m.projects.map(p => (
+                                                                <li
+                                                                    key={p.id}
+                                                                    onClick={() => openProjectDetail(p)}
+                                                                    className="py-2 flex items-center justify-between gap-2 cursor-pointer hover:bg-[#21262d]/60 px-2 -mx-2 rounded transition-colors"
+                                                                >
+                                                                    <div className="flex items-center gap-2 min-w-0">
+                                                                        <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded bg-[#21262d] border border-gray-700 text-gray-400">{p.type === '專案' ? '專案' : '工具'}</span>
+                                                                        <span className="text-xs text-gray-200 truncate">{p.title}</span>
+                                                                    </div>
+                                                                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold tag-status-${p.status}`}>{p.status}</span>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
 
-                    {/* 帳號管理（僅 ADMIN） */}
+                    {/* ===== 帳號管理（僅 ADMIN） ===== */}
                     {currentTab === "帳號管理" && currentUser.role === "ADMIN" && (
                         <div className="p-6 max-w-7xl mx-auto">
                             <div className="flex items-center justify-between mb-6">
                                 <div>
                                     <h1 className="text-2xl font-bold mb-1 text-white">帳號管理<span className="text-emerald-400">.</span></h1>
-                                    <p className="text-gray-400 text-sm">管理成員權限與帳號啟用狀態</p>
+                                    <p className="text-gray-400 text-sm">管理成員權限、密碼與帳號啟用狀態</p>
                                 </div>
                                 <button
                                     onClick={() => setShowUserModal(true)}
@@ -558,7 +1240,7 @@
                                 </button>
                             </div>
 
-                            <div className="dark-card rounded-xl p-4">
+                            <div className="dark-card rounded-xl p-4 overflow-x-auto">
                                 <table className="w-full text-left text-sm text-gray-300">
                                     <thead className="border-b border-gray-800 text-gray-400">
                                         <tr>
@@ -566,19 +1248,181 @@
                                             <th className="p-3">帳號</th>
                                             <th className="p-3">單位</th>
                                             <th className="p-3">權限</th>
+                                            <th className="p-3">狀態</th>
+                                            <th className="p-3 text-right">操作</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {users.map(u => (
-                                            <tr key={u.id} className="border-b border-gray-800/50">
-                                                <td className="p-3 font-semibold">{u.name}</td>
-                                                <td className="p-3">{u.account}</td>
-                                                <td className="p-3">{u.unit || 'JJ'}</td>
-                                                <td className="p-3"><span className="text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-800">{u.role}</span></td>
-                                            </tr>
-                                        ))}
+                                        {users.map(u => {
+                                            const disabled = u.status === 'disabled';
+                                            const isSelf = u.account === currentUser.account;
+                                            return (
+                                                <tr key={u.id} className={`border-b border-gray-800/50 ${disabled ? 'opacity-50' : ''}`}>
+                                                    <td className="p-3 font-semibold">{u.name}{isSelf && <span className="text-[10px] text-gray-500 ml-1">(自己)</span>}</td>
+                                                    <td className="p-3">{u.account}</td>
+                                                    <td className="p-3">{u.unit || 'JJ'}</td>
+                                                    <td className="p-3"><span className="text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-800">{u.role}</span></td>
+                                                    <td className="p-3">
+                                                        {disabled
+                                                            ? <span className="text-xs bg-red-950/60 text-red-400 px-2 py-0.5 rounded border border-red-800/80">已停用</span>
+                                                            : <span className="text-xs bg-[#23863633] text-[#3fb950] px-2 py-0.5 rounded border border-[#23863666]">啟用中</span>}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <button
+                                                                onClick={() => handleOpenEditUser(u)}
+                                                                className="text-xs bg-[#21262d] hover:bg-[#30363d] text-gray-300 px-2.5 py-1 rounded-md border border-gray-700"
+                                                            >
+                                                                ✏️ 編輯
+                                                            </button>
+                                                            {!isSelf && (
+                                                                <button
+                                                                    onClick={() => handleToggleUserStatus(u)}
+                                                                    className={`text-xs px-2.5 py-1 rounded-md border ${disabled
+                                                                        ? 'bg-emerald-950 text-emerald-400 border-emerald-700 hover:bg-emerald-900'
+                                                                        : 'bg-red-950/60 text-red-400 border-red-800/80 hover:bg-red-900'}`}
+                                                                >
+                                                                    {disabled ? '✅ 啟用' : '🚫 停用'}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ===== 圖片放大燈箱 ===== */}
+                    {lightboxUrl && (
+                        <div
+                            className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-6 cursor-zoom-out"
+                            onClick={() => setLightboxUrl(null)}
+                        >
+                            <button
+                                onClick={() => setLightboxUrl(null)}
+                                className="absolute top-4 right-6 text-gray-300 hover:text-white text-3xl font-light"
+                                title="關閉 (Esc)"
+                            >
+                                ✕
+                            </button>
+                            <img
+                                src={lightboxUrl}
+                                alt="放大顯示"
+                                className="max-w-full max-h-full rounded-lg shadow-2xl object-contain"
+                                onClick={e => e.stopPropagation()}
+                            />
+                        </div>
+                    )}
+
+                    {/* ===== 彈窗：編輯成員帳號（僅 ADMIN，含權限/單位/改密碼/刪除） ===== */}
+                    {editUserTarget && currentUser.role === "ADMIN" && (
+                        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                            <div className="dark-card p-6 rounded-2xl w-full max-w-md shadow-2xl my-8">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-xl font-bold text-white">✏️ 編輯帳號</h2>
+                                    <button onClick={() => setEditUserTarget(null)} className="text-gray-500 hover:text-white text-xl leading-none">✕</button>
+                                </div>
+                                <p className="text-xs text-gray-400 mb-4">帳號：{editUserTarget.account}</p>
+
+                                <form onSubmit={handleSaveEditUser} className="space-y-4">
+                                    <div>
+                                        <label className="text-xs text-gray-400 block mb-1">暱稱（畫面顯示為負責人）</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            className="w-full p-2.5 rounded-lg dark-input text-sm"
+                                            value={editUserForm.name}
+                                            onChange={e => setEditUserForm({ ...editUserForm, name: e.target.value })}
+                                        />
+                                        <p className="text-[11px] text-gray-500 mt-1">修改暱稱會同步更新其名下所有專案的負責人名稱</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-gray-400 block mb-1">權限</label>
+                                        <div className="grid grid-cols-2 gap-0 rounded-lg overflow-hidden border border-gray-700">
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditUserForm({ ...editUserForm, role: "MEMBER" })}
+                                                className={`py-2 text-sm font-semibold transition-colors ${editUserForm.role === "MEMBER" ? 'bg-emerald-500 text-black' : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}`}
+                                            >
+                                                一般成員
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditUserForm({ ...editUserForm, role: "ADMIN" })}
+                                                className={`py-2 text-sm font-semibold transition-colors ${editUserForm.role === "ADMIN" ? 'bg-emerald-500 text-black' : 'bg-[#21262d] text-gray-400 hover:bg-[#30363d]'}`}
+                                            >
+                                                管理者
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-gray-400 block mb-1">所屬單位（含班別）</label>
+                                        <div className="flex gap-2">
+                                            {UNIT_OPTIONS.map(opt => (
+                                                <button
+                                                    key={opt}
+                                                    type="button"
+                                                    onClick={() => setEditUserForm({ ...editUserForm, unit: opt })}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${editUserForm.unit === opt
+                                                        ? 'bg-emerald-500 text-black border-emerald-500'
+                                                        : 'bg-[#21262d] text-gray-400 border-gray-700 hover:bg-[#30363d]'}`}
+                                                >
+                                                    {opt}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-gray-400 block mb-1">重設密碼（留空＝不改）</label>
+                                        <input
+                                            type="password"
+                                            inputMode="numeric"
+                                            maxLength="6"
+                                            className="w-full p-2.5 rounded-lg dark-input text-sm"
+                                            value={editUserForm.password}
+                                            onChange={e => setEditUserForm({ ...editUserForm, password: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                                            placeholder="留空則不變更"
+                                        />
+                                        <p className="text-[11px] text-gray-500 mt-1">需為 6 位數字，例如 123456</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditUserTarget(null)}
+                                            className="py-2.5 rounded-lg text-sm font-semibold bg-[#21262d] text-gray-300 border border-gray-700 hover:bg-[#30363d]"
+                                        >
+                                            取消
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={editUserSaving}
+                                            className="py-2.5 rounded-lg text-sm font-bold bg-emerald-500 text-black hover:bg-emerald-400 disabled:opacity-50"
+                                        >
+                                            {editUserSaving ? '儲存中...' : '儲存'}
+                                        </button>
+                                    </div>
+
+                                    {editUserTarget.account !== currentUser.account && (
+                                        <div className="pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteUser(editUserTarget)}
+                                                className="w-full py-2.5 rounded-lg text-sm font-bold text-red-400 border border-red-800/80 bg-red-950/40 hover:bg-red-900"
+                                            >
+                                                刪除此帳號
+                                            </button>
+                                            <p className="text-[11px] text-gray-500 text-center mt-2">帳號若仍是某專案的負責人則無法刪除</p>
+                                        </div>
+                                    )}
+                                </form>
                             </div>
                         </div>
                     )}
@@ -641,6 +1485,10 @@
                                         <label className="text-xs text-emerald-400 block mb-1">⚡ 優化方法</label>
                                         <textarea rows="2" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.solution} onChange={e => setNewProject({...newProject, solution: e.target.value})} placeholder="例如：利用該網址轉化文字..."></textarea>
                                     </div>
+                                    <div>
+                                        <label className="text-xs text-yellow-400 block mb-1">📈 目前進展</label>
+                                        <textarea rows="2" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.progress} onChange={e => setNewProject({...newProject, progress: e.target.value})} placeholder="例如：已完成核心功能，剩介面調整與測試..."></textarea>
+                                    </div>
 
                                     <div>
                                         <label className="text-xs text-gray-400 block mb-1">專案網址 (URL)</label>
@@ -648,10 +1496,32 @@
                                     </div>
 
                                     <div>
-                                        <label className="text-xs text-gray-400 block mb-1">成果附圖 (上傳圖片檔)</label>
-                                        <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full p-2 rounded-lg dark-input text-xs text-gray-300 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-emerald-500 file:text-black file:font-bold" />
-                                        {newProject.image_url && (
-                                            <img src={newProject.image_url} alt="預覽" className="mt-2 h-24 rounded border border-gray-700 object-cover" />
+                                        <label className="text-xs text-gray-400 block mb-1">成果附圖（最多 {MAX_IMAGES} 張，可一次多選，點圖上 ✕ 可刪除）</label>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            onChange={handleImageUpload}
+                                            disabled={newProject.images.length >= MAX_IMAGES}
+                                            className="w-full p-2 rounded-lg dark-input text-xs text-gray-300 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-emerald-500 file:text-black file:font-bold disabled:opacity-40"
+                                        />
+                                        <p className="text-[11px] text-gray-500 mt-1">已上傳 {newProject.images.length} / {MAX_IMAGES} 張</p>
+                                        {newProject.images.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {newProject.images.map((img, idx) => (
+                                                    <div key={idx} className="relative group">
+                                                        <img src={img} alt={`預覽 ${idx + 1}`} className="h-24 w-24 rounded border border-gray-700 object-cover" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveImage(idx)}
+                                                            title="刪除這張圖"
+                                                            className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center justify-center shadow-lg"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         )}
                                     </div>
 
@@ -708,8 +1578,12 @@
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="text-xs text-gray-400 block mb-1">單位</label>
-                                            <input type="text" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.unit} onChange={e => setNewUser({...newUser, unit: e.target.value})} />
+                                            <label className="text-xs text-gray-400 block mb-1">單位（含班別）</label>
+                                            <select className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.unit} onChange={e => setNewUser({...newUser, unit: e.target.value})}>
+                                                {UNIT_OPTIONS.map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                         <div>
                                             <label className="text-xs text-gray-400 block mb-1">權限角色</label>
