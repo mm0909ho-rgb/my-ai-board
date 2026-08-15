@@ -1,271 +1,388 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Showcase | 个人 AI 专案展示板</title>
-  <!-- 引入 Tailwind CSS 方便快速样式控制 -->
+  <title>AI 成果追蹤 Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 引入 FontAwesome 图标库 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    body {
-      background-color: #0f172a;
-      color: #f8fafc;
-      font-family: system-ui, -apple-system, sans-serif;
-    }
-    .glass-card {
-      background: rgba(30, 41, 59, 0.7);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-  </style><!-- 引入 Supabase SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    body { background-color: #f3f3ee; color: #1e293b; font-family: system-ui, -apple-system, sans-serif; }
+    .nav-btn.active { background-color: #2563eb; color: #ffffff; }
+    .tag-lime { background-color: #ccfbf1; color: #0f766e; }
+  </style>
 </head>
 <body class="min-h-screen flex flex-col">
 
-  <!-- 头部 Hero 区块 -->
-  <header class="py-12 px-6 text-center max-w-4xl mx-auto">
-    <div class="inline-block p-2 bg-indigo-500/10 rounded-full mb-4 border border-indigo-500/30">
-      <span class="text-indigo-400 text-sm font-semibold px-3">🚀 AI Projects Board</span>
+  <!-- 登录遮罩层 -->
+  <div id="login-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-slate-100">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center text-lg font-bold">🔒</div>
+        <div>
+          <h2 class="text-xl font-extrabold">請先登入</h2>
+          <p class="text-xs text-slate-500">本看板為內部平台，請輸入帳號密碼</p>
+        </div>
+      </div>
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">帳號 (Email / Email 格式)</label>
+          <input type="email" id="login-email" required class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">密碼</label>
+          <input type="password" id="login-password" required class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+        </div>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl transition shadow-lg shadow-blue-500/30">登入</button>
+      </form>
     </div>
-    <h1 class="text-4xl md:text-5xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500">
-      个人 AI 专案成果展示
-    </h1>
-    <p class="text-slate-400 text-lg mb-6">
-      这里汇集了我开发的各种人工智能项目，包括 LLM 应用、计算机视觉、自动化 Agent 等。
-    </p>
-    <div class="flex justify-center gap-4 text-xl text-slate-300">
-      <a href="https://github.com" target="_blank" class="hover:text-indigo-400 transition"><i class="fab font-bold fa-github"></i></a>
-      <a href="https://linkedin.com" target="_blank" class="hover:text-indigo-400 transition"><i class="fab fa-linkedin"></i></a>
-      <a href="mailto:your-email@example.com" class="hover:text-indigo-400 transition"><i class="fas fa-envelope"></i></a>
+  </div>
+
+  <!-- 顶栏导航 -->
+  <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-6">
+      <div class="flex items-center gap-2">
+        <span class="bg-black text-white font-extrabold px-3 py-1 rounded-lg text-sm">AI 成果</span>
+        <span class="bg-lime-400 text-black font-extrabold px-3 py-1 rounded-lg text-sm">追蹤</span>
+      </div>
+      <nav class="flex items-center gap-1 text-sm font-bold">
+        <button onclick="switchTab('overview')" id="tab-overview" class="nav-btn px-3 py-1.5 rounded-lg active">總覽</button>
+        <button onclick="switchTab('members')" id="tab-members" class="nav-btn px-3 py-1.5 rounded-lg text-slate-600">單位成員</button>
+        <button onclick="switchTab('accounts')" id="tab-accounts" class="nav-btn px-3 py-1.5 rounded-lg text-slate-600 hidden">帳號管理</button>
+      </nav>
+    </div>
+    <div id="user-profile" class="flex items-center gap-3">
+      <span id="user-info-text" class="text-xs bg-slate-100 px-3 py-1.5 rounded-full font-bold text-slate-700">未登入</span>
+      <button id="auth-btn" onclick="toggleAuth()" class="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-lg transition">登入</button>
     </div>
   </header>
 
-  <!-- 筛选与搜索控制栏 -->
-  <main class="flex-grow max-w-6xl w-full mx-auto px-6 mb-16">
-    <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-8">
-      <!-- 标签筛选按钮 -->
-      <div id="filter-buttons" class="flex flex-wrap gap-2">
-        <button class="filter-btn active bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition" data-category="all">全部</button>
-        <button class="filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition" data-category="llm">大模型 / Agent</button>
-        <button class="filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition" data-category="cv">计算机视觉</button>
-        <button class="filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition" data-category="audio">语音 / 音频处理</button>
+  <!-- 主内容区 -->
+  <main class="flex-grow max-w-7xl w-full mx-auto p-6">
+    
+    <!-- Tab 1: 总览面板 -->
+    <section id="view-overview" class="space-y-6">
+      <div>
+        <span class="text-[10px] font-black tracking-widest text-slate-400">DASHBOARD</span>
+        <h1 class="text-3xl font-black text-slate-900">總覽<span class="text-blue-600">.</span></h1>
+        <p class="text-slate-500 text-sm">所有單位 AI 自動化專案的即時進度與成果一覽</p>
       </div>
 
-      <!-- 搜索框 -->
-      <div class="relative w-full md:w-64">
-        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-        <input type="text" id="search-input" placeholder="搜索专案..." class="w-full bg-slate-800/80 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
-      </div>
-    </div>
-
-    <!-- 专案卡片网格 -->
-    <div id="projects-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      
-      <!-- 卡片 1 -->
-      <div class="project-card glass-card rounded-xl overflow-hidden hover:-translate-y-1 transition duration-300" data-category="llm">
-        <img src="https://picsum.photos/600/350?random=1" alt="AI Agent" class="w-full h-48 object-cover">
-        <div class="p-5">
-          <div class="flex justify-between items-start mb-2">
-            <h3 class="font-bold text-xl text-slate-100">智能文献研读 Agent</h3>
-            <span class="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded border border-indigo-500/30">LLM</span>
-          </div>
-          <p class="text-slate-400 text-sm mb-4 line-clamp-2">
-            基于 LangChain 与 OpenAI API 构建的自动化论文总结分析助手，支持 PDF 解析与对话问答。
-          </p>
-          <div class="flex flex-wrap gap-1.5 mb-5">
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Python</span>
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">LangChain</span>
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">FastAPI</span>
-          </div>
-          <div class="flex justify-between items-center pt-3 border-t border-slate-800">
-            <a href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
-              <i class="fas fa-external-link-alt"></i> 在线演示
-            </a>
-            <a href="#" target="_blank" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
-              <i class="fab fa-github"></i> GitHub
-            </a>
-          </div>
+      <!-- 统计指标卡片 -->
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <span class="text-xs text-slate-400 font-bold">● AI 專案總數</span>
+          <div class="text-4xl font-black mt-2" id="stat-total">0 <span class="text-xs font-normal text-slate-400">個</span></div>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <span class="text-xs text-slate-400 font-bold">● 進行中</span>
+          <div class="text-4xl font-black mt-2" id="stat-dev">0 <span class="text-xs font-normal text-slate-400">個</span></div>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <span class="text-xs text-slate-400 font-bold">● 已上線</span>
+          <div class="text-4xl font-black mt-2 text-lime-600" id="stat-online">0 <span class="text-xs font-normal text-slate-400">個</span></div>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <span class="text-xs text-slate-400 font-bold">● 測試中</span>
+          <div class="text-4xl font-black mt-2" id="stat-test">0 <span class="text-xs font-normal text-slate-400">個</span></div>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <span class="text-xs text-slate-400 font-bold">● 規劃中</span>
+          <div class="text-4xl font-black mt-2" id="stat-plan">0 <span class="text-xs font-normal text-slate-400">個</span></div>
         </div>
       </div>
+    </section>
 
-      <!-- 卡片 2 -->
-      <div class="project-card glass-card rounded-xl overflow-hidden hover:-translate-y-1 transition duration-300" data-category="cv">
-        <img src="https://picsum.photos/600/350?random=2" alt="CV Project" class="w-full h-48 object-cover">
-        <div class="p-5">
-          <div class="flex justify-between items-start mb-2">
-            <h3 class="font-bold text-xl text-slate-100">实时目标检测系统</h3>
-            <span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30">CV</span>
-          </div>
-          <p class="text-slate-400 text-sm mb-4 line-clamp-2">
-            使用 YOLOv8 训练的特定场景物体识别模型，支持视频流处理与高帧率检测。
-          </p>
-          <div class="flex flex-wrap gap-1.5 mb-5">
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">PyTorch</span>
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">YOLOv8</span>
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">OpenCV</span>
-          </div>
-          <div class="flex justify-between items-center pt-3 border-t border-slate-800">
-            <a href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
-              <i class="fas fa-external-link-alt"></i> 在线演示
-            </a>
-            <a href="#" target="_blank" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
-              <i class="fab fa-github"></i> GitHub
-            </a>
-          </div>
-        </div>
+    <!-- Tab 2: 单位成员卡片 -->
+    <section id="view-members" class="space-y-6 hidden">
+      <div>
+        <span class="text-[10px] font-black tracking-widest text-slate-400">DASHBOARD</span>
+        <h1 class="text-3xl font-black text-slate-900">單位成員<span class="text-blue-600">.</span></h1>
+        <p class="text-slate-500 text-sm">點選單位 → 查看成員 → 各自的 AI 成果</p>
       </div>
 
-      <!-- 卡片 3 -->
-      <div class="project-card glass-card rounded-xl overflow-hidden hover:-translate-y-1 transition duration-300" data-category="audio">
-        <img src="https://picsum.photos/600/350?random=3" alt="Audio AI" class="w-full h-48 object-cover">
-        <div class="p-5">
-          <div class="flex justify-between items-start mb-2">
-            <h3 class="font-bold text-xl text-slate-100">AI 语音转文字与降噪</h3>
-            <span class="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded border border-purple-500/30">Audio</span>
-          </div>
-          <p class="text-slate-400 text-sm mb-4 line-clamp-2">
-            集成 Whisper 模型与 WebRTC 降噪技术的自动化会议纪要整理工具。
-          </p>
-          <div class="flex flex-wrap gap-1.5 mb-5">
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Whisper</span>
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">React</span>
-            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Python</span>
-          </div>
-          <div class="flex justify-between items-center pt-3 border-t border-slate-800">
-            <a href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
-              <i class="fas fa-external-link-alt"></i> 在线演示
-            </a>
-            <a href="#" target="_blank" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
-              <i class="fab fa-github"></i> GitHub
-            </a>
-          </div>
+      <div id="members-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- 成员卡片动态生成 -->
+      </div>
+    </section>
+
+    <!-- Tab 3: 管理员专属 - 账号管理 -->
+    <section id="view-accounts" class="space-y-6 hidden">
+      <div class="flex justify-between items-end">
+        <div>
+          <span class="text-[10px] font-black tracking-widest text-slate-400">DASHBOARD</span>
+          <h1 class="text-3xl font-black text-slate-900">帳號管理<span class="text-blue-600">.</span></h1>
+          <p class="text-slate-500 text-sm">設定每個帳號的暱稱、權限、所屬單位與密碼</p>
         </div>
+        <button onclick="openCreateUserModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition flex items-center gap-2 shadow-lg shadow-blue-500/20">
+          <i class="fas fa-plus"></i> 新增帳號
+        </button>
       </div>
 
-    </div>
+      <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-xs text-slate-400 uppercase tracking-wider font-bold">
+              <th class="p-4">ID</th>
+              <th class="p-4">使用者暱稱 / Email</th>
+              <th class="p-4">權限等級</th>
+              <th class="p-4">所屬單位</th>
+              <th class="p-4">班別</th>
+            </tr>
+          </thead>
+          <tbody id="accounts-table-body" class="divide-y divide-slate-100 text-sm">
+            <!-- 账号表格动态渲染 -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
   </main>
 
-  <!-- 页脚 -->
-  <footer class="py-6 border-t border-slate-800 text-center text-slate-500 text-sm">
-    © 2026 AI Showcase. Built with HTML & Tailwind CSS.
-  </footer>
-
-  <!-- 分类筛选与搜索逻辑 -->
-  <script>
-    <script>
-  // 1. 配置 Supabase 凭证
-  const SUPABASE_URL = 'https://pbdgrwokkulcjsyoknhu.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_gWK045iwHBKkGYQJTHY8JA_YiMy4vx8';
-  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-  const filterBtns = document.querySelectorAll('.filter-btn');
-  const searchInput = document.getElementById('search-input');
-  const projectsGrid = document.getElementById('projects-grid');
-
-  let currentCategory = 'all';
-
-  // 分类映射表
-  const categoryMap = {
-    'llm': { label: 'LLM', class: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
-    'cv': { label: 'CV', class: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
-    'audio': { label: 'Audio', class: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-    'other': { label: 'Other', class: 'bg-slate-500/20 text-slate-300 border-slate-500/30' }
-  };
-
-  // 2. 从 Supabase 读取数据并渲染
-  async function fetchProjects() {
-    projectsGrid.innerHTML = '<div class="col-span-full text-center text-slate-400 py-10">加载数据中...</div>';
-    
-    const { data, error } = await supabaseClient
-      .from('projects')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('读取 Supabase 失败:', error);
-      projectsGrid.innerHTML = '<div class="col-span-full text-center text-red-400 py-10">加载失败，请检查数据库配置</div>';
-      return;
-    }
-
-    renderProjects(data);
-  }
-
-  // 3. 渲染卡片 HTML
-  function renderProjects(projects) {
-    if (!projects || projects.length === 0) {
-      projectsGrid.innerHTML = '<div class="col-span-full text-center text-slate-400 py-10">暂无项目数据</div>';
-      return;
-    }
-
-    projectsGrid.innerHTML = projects.map(item => {
-      const catConfig = categoryMap[item.category] || categoryMap['other'];
-      const techBadges = (item.tech_stack || []).map(t => `<span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">${t}</span>`).join('');
-
-      return `
-        <div class="project-card glass-card rounded-xl overflow-hidden hover:-translate-y-1 transition duration-300" data-category="${item.category}">
-          <img src="${item.image_url || 'https://picsum.photos/600/350'}" alt="${item.title}" class="w-full h-48 object-cover">
-          <div class="p-5">
-            <div class="flex justify-between items-start mb-2">
-              <h3 class="font-bold text-xl text-slate-100">${item.title}</h3>
-              <span class="text-xs ${catConfig.class} px-2 py-1 rounded border">${catConfig.label}</span>
-            </div>
-            <p class="text-slate-400 text-sm mb-4 line-clamp-2">${item.description}</p>
-            <div class="flex flex-wrap gap-1.5 mb-5">${techBadges}</div>
-            <div class="flex justify-between items-center pt-3 border-t border-slate-800">
-              <a href="${item.demo_url || '#'}" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
-                <i class="fas fa-external-link-alt"></i> 在线演示
-              </a>
-              <a href="${item.github_url || '#'}" target="_blank" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
-                <i class="fab fa-github"></i> GitHub
-              </a>
-            </div>
+  <!-- 新增账号模态框 -->
+  <div id="create-user-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+      <h3 class="text-lg font-bold mb-4">新增成員帳號</h3>
+      <form id="create-user-form" class="space-y-3">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Email 帳號</label>
+          <input type="email" id="new-user-email" placeholder="user@company.com" required class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">密碼</label>
+          <input type="password" id="new-user-password" placeholder="至少 6 位字符" required class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">暱稱 / 姓名</label>
+          <input type="text" id="new-user-name" placeholder="例如: Tako" required class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">權限</label>
+            <select id="new-user-role" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="MEMBER">MEMBER (一般)</option>
+              <option value="ADMIN">ADMIN (管理者)</option>
+              <option value="SUPER">SUPER (最高權限)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">單位</label>
+            <select id="new-user-unit" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="DD">DD</option>
+              <option value="UU">UU</option>
+              <option value="CS">CS</option>
+              <option value="AS">AS</option>
+            </select>
           </div>
         </div>
-      `;
-    }).join('');
+        <div class="flex justify-end gap-2 pt-4">
+          <button type="button" onclick="closeCreateUserModal()" class="px-4 py-2 text-sm text-slate-500 font-bold">取消</button>
+          <button type="submit" class="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm">建立帳號</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-    filterProjects();
-  }
+  <script>
+    // 1. 配置 Supabase 凭证
+    const SUPABASE_URL = 'https://pbdgrwokkulcjsyoknhu.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_gWK045iwHBKkGYQJTHY8JA_YiMy4vx8';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // 4. 筛选与搜索
-  filterBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      filterBtns.forEach(b => {
-        b.classList.remove('bg-indigo-600', 'text-white');
-        b.classList.add('bg-slate-800', 'text-slate-300');
-      });
-      btn.classList.remove('bg-slate-800', 'text-slate-300');
-      btn.classList.add('bg-indigo-600', 'text-white');
+    let currentUser = null;
+    let currentUserProfile = null;
 
-      currentCategory = btn.dataset.category;
-      filterProjects();
+    // 页面初始化
+    window.addEventListener('DOMContentLoaded', async () => {
+      checkUserSession();
+      loadOverviewStats();
     });
-  });
 
-  searchInput.addEventListener('input', filterProjects);
-
-  function filterProjects() {
-    const searchTerm = searchInput.value.toLowerCase();
-    const cards = document.querySelectorAll('.project-card');
-
-    cards.forEach(card => {
-      const category = card.dataset.category;
-      const text = card.textContent.toLowerCase();
-      const matchesCategory = (currentCategory === 'all' || category === currentCategory);
-      const matchesSearch = text.includes(searchTerm);
-
-      card.style.display = (matchesCategory && matchesSearch) ? 'block' : 'none';
-    });
-  }
-
-  // 初始化加载数据
-  fetchProjects();
-</script>
-        }
-      });
+    // 检查登录状态
+    async function checkUserSession() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        currentUser = session.user;
+        // 获取 Profile 权限
+        const { data: profile } = await supabaseClient
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .single();
+        
+        currentUserProfile = profile;
+        updateUIForLogin();
+      } else {
+        updateUIForLogout();
+      }
     }
+
+    function updateUIForLogin() {
+      document.getElementById('user-info-text').innerText = `${currentUserProfile?.username || currentUser.email} (${currentUserProfile?.role || 'MEMBER'})`;
+      document.getElementById('auth-btn').innerText = '登出';
+      document.getElementById('login-modal').classList.add('hidden');
+
+      // 管理员显示账号管理 Tab
+      if (['ADMIN', 'SUPER'].includes(currentUserProfile?.role)) {
+        document.getElementById('tab-accounts').classList.remove('hidden');
+      }
+    }
+
+    function updateUIForLogout() {
+      document.getElementById('user-info-text').innerText = '未登入';
+      document.getElementById('auth-btn').innerText = '登入';
+      document.getElementById('tab-accounts').classList.add('hidden');
+      switchTab('overview');
+    }
+
+    function toggleAuth() {
+      if (currentUser) {
+        supabaseClient.auth.signOut().then(() => {
+          currentUser = null;
+          currentUserProfile = null;
+          updateUIForLogout();
+        });
+      } else {
+        document.getElementById('login-modal').classList.remove('hidden');
+      }
+    }
+
+    // 登录逻辑
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error) {
+        alert('登入失敗：' + error.message);
+      } else {
+        checkUserSession();
+      }
+    });
+
+    // Tab 切换逻辑
+    function switchTab(tabName) {
+      ['overview', 'members', 'accounts'].forEach(t => {
+        document.getElementById(`view-${t}`)?.classList.add('hidden');
+        document.getElementById(`tab-${t}`)?.classList.remove('active', 'text-slate-600');
+        document.getElementById(`tab-${t}`)?.classList.add('text-slate-600');
+      });
+
+      document.getElementById(`view-${tabName}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`tab-${tabName}`);
+      activeBtn.classList.add('active');
+      activeBtn.classList.remove('text-slate-600');
+
+      if (tabName === 'members') loadMembersView();
+      if (tabName === 'accounts') loadAccountsView();
+    }
+
+    // 加载总览统计数据
+    async function loadOverviewStats() {
+      const { data: projects } = await supabaseClient.from('projects').select('status');
+      if (!projects) return;
+
+      document.getElementById('stat-total').innerText = projects.length;
+      document.getElementById('stat-online').innerText = projects.filter(p => p.status === '上線').length;
+      document.getElementById('stat-dev').innerText = projects.filter(p => p.status === '開發').length;
+      document.getElementById('stat-test').innerText = projects.filter(p => p.status === '測試').length;
+      document.getElementById('stat-plan').innerText = projects.filter(p => p.status === '規劃').length;
+    }
+
+    // 加载单位成员卡片视图
+    async function loadMembersView() {
+      const { data: profiles } = await supabaseClient
+        .from('profiles')
+        .select(`*, projects(*)`);
+
+      const grid = document.getElementById('members-grid');
+      if (!profiles || profiles.length === 0) {
+        grid.innerHTML = '<p class="col-span-full text-center text-slate-400 py-10">尚無成員資料</p>';
+        return;
+      }
+
+      grid.innerHTML = profiles.map(m => {
+        const projectItems = (m.projects || []).map(p => `
+          <div class="flex justify-between items-center bg-slate-50 border border-slate-100 p-2 rounded-lg text-xs mb-1.5">
+            <span class="font-bold text-slate-700 truncate max-w-[140px]">${p.title}</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${p.status === '上線' ? 'bg-lime-100 text-lime-700' : 'bg-slate-200 text-slate-600'}">${p.status}</span>
+          </div>
+        `).join('');
+
+        return `
+          <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+              <div class="flex items-center gap-2">
+                <span class="w-7 h-7 bg-blue-600 text-white font-black text-xs flex items-center justify-center rounded-lg">${m.shift || '早'}</span>
+                <div>
+                  <h3 class="font-black text-slate-800 text-base">${m.username}</h3>
+                  <span class="text-[10px] text-slate-400 font-bold">${m.unit || 'DD'} 單位</span>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="text-2xl font-black text-blue-600">${m.projects?.length || 0}</span>
+                <span class="text-[10px] text-slate-400 block font-bold">項目</span>
+              </div>
+            </div>
+            <div>${projectItems || '<p class="text-xs text-slate-300 text-center py-4">未發布任何專案</p>'}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 加载管理员专属：账号管理视图
+    async function loadAccountsView() {
+      const { data: profiles } = await supabaseClient.from('profiles').select('*');
+      const tbody = document.getElementById('accounts-table-body');
+
+      tbody.innerHTML = (profiles || []).map((p, idx) => `
+        <tr class="hover:bg-slate-50/80">
+          <td class="p-4 font-mono text-xs text-slate-400">${String(idx + 1).padStart(2, '0')}</td>
+          <td class="p-4 font-bold text-slate-800">${p.username}</td>
+          <td class="p-4 font-bold text-xs text-blue-600">${p.role}</td>
+          <td class="p-4 font-bold text-xs">${p.unit || 'DD'}</td>
+          <td class="p-4 font-bold text-xs text-slate-500">${p.shift || '早'}</td>
+        </tr>
+      `).join('');
+    }
+
+    // 打开/关闭管理员创建账号模态框
+    function openCreateUserModal() { document.getElementById('create-user-modal').classList.remove('hidden'); }
+    function closeCreateUserModal() { document.getElementById('create-user-modal').classList.add('hidden'); }
+
+    // 管理员创建账号
+    document.getElementById('create-user-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('new-user-email').value;
+      const password = document.getElementById('new-user-password').value;
+      const username = document.getElementById('new-user-name').value;
+      const role = document.getElementById('new-user-role').value;
+      const unit = document.getElementById('new-user-unit').value;
+
+      // 1. 注册 Supabase 账号
+      const { data: authData, error: authError } = await supabaseClient.auth.signUp({ email, password });
+      
+      if (authError) {
+        alert('建立失敗: ' + authError.message);
+        return;
+      }
+
+      // 2. 插入 Profile 扩展数据
+      if (authData.user) {
+        await supabaseClient.from('profiles').insert([{
+          id: authData.user.id,
+          username,
+          role,
+          unit
+        }]);
+
+        alert('成功建立成員帳號！');
+        closeCreateUserModal();
+        loadAccountsView();
+      }
+    });
   </script>
 </body>
 </html>
