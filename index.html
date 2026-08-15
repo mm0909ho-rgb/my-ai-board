@@ -79,7 +79,7 @@
       </div>
     </section>
 
-    <!-- 2. 管理员账号管理 Tab (需求 2) -->
+    <!-- 2. 管理员账号管理 Tab -->
     <section id="page-admin" class="space-y-6 hidden">
       <div class="flex justify-between items-center">
         <div>
@@ -112,7 +112,7 @@
 
   <!-- ================= 模态框组 (MODALS) ================= -->
 
-  <!-- 1. 发布/编辑专案弹窗 (需求 5) -->
+  <!-- 1. 发布/编辑专案弹窗 -->
   <div id="modal-project" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
     <div class="bg-[#151c2c] border border-[#26334d] rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto text-xs shadow-2xl">
       <div class="flex justify-between items-center mb-4 border-b border-[#26334d] pb-3">
@@ -175,7 +175,7 @@
     </div>
   </div>
 
-  <!-- 2. 专案详情与讨论/建议弹窗 (需求 5 & 6) -->
+  <!-- 2. 专案详情与讨论/建议弹窗 -->
   <div id="modal-detail" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
     <div class="bg-[#151c2c] border border-[#26334d] rounded-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto text-xs shadow-2xl space-y-6">
       
@@ -222,7 +222,7 @@
         </div>
       </div>
 
-      <!-- 专案探讨与建议区块 (需求 6) -->
+      <!-- 专案探讨与建议区块 -->
       <div class="border-t border-[#26334d] pt-4 space-y-4">
         <h3 class="text-sm font-bold text-white flex items-center gap-2">
           <i class="fa-solid fa-comments text-emerald-400"></i> 專案探討與反饋建議
@@ -266,7 +266,7 @@
     </div>
   </div>
 
-  <!-- 4. 管理员新增成员弹窗 (需求 2) -->
+  <!-- 4. 管理员新增成员弹窗 -->
   <div id="modal-create-user" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
     <div class="bg-[#151c2c] border border-[#26334d] rounded-2xl p-6 max-w-sm w-full text-xs shadow-2xl">
       <h3 class="text-base font-bold text-white mb-4">新增成員帳號</h3>
@@ -300,16 +300,15 @@
 
   <!-- JavaScript 核心逻辑代码 -->
   <script>
-    // ⚠️ 請替換為您的 Supabase URL 与 Anon Key
     const SUPABASE_URL = 'https://pbdgrwokkulcjsyoknhu.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZGdyd29ra3VsY2pzeW9rbmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MzA2NDIsImV4cCI6MjEwMjMwNjY0Mn0.uDEfM8o5B81IjjG9dw1bUqNA7BRdlriPXhJe7EZYZOQ';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZGdyd29ra3VsY2pzeW9rbmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MzA2NDIsImV4cCI6MjA3OTMwNjY0Mn0.uDEfM8o5B81IjjG9dw1bUqNA7BRdlriPXhJe7EZYZOQ';
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let currentUser = null;
     let userProfile = null;
     let activeProjectId = null;
+    let allProjectsMap = {}; // 存储专案缓存便于弹窗获取
 
-    // 初始化
     window.addEventListener('DOMContentLoaded', async () => {
       await checkAuth();
       loadOverviewData();
@@ -321,13 +320,11 @@
       if (session) {
         currentUser = session.user;
         const { data } = await supabaseClient.from('profiles').select('*').eq('id', currentUser.id).single();
-        userProfile = data;
+        userProfile = data || { username: currentUser.email.split('@')[0], role: 'ADMIN' };
 
-        // 需求 3: 动态更新左上角 (Name (ADMIN/MEMBER))
         const roleTag = userProfile.role === 'ADMIN' ? 'ADMIN' : 'MEMBER';
-        document.getElementById('user-display').innerText = `${userProfile.username} (${roleTag})`;
+        document.getElementById('user-display').innerText = `${userProfile.username || '使用者'} (${roleTag})`;
 
-        // 管理员专用页签显示
         if (userProfile.role === 'ADMIN') {
           document.getElementById('tab-admin').classList.remove('hidden');
         }
@@ -356,45 +353,52 @@
       }
     }
 
-    // 需求 4: 自动归类成员专案（可展开区块）
+    // 自动归类成员专案（修复点击卡片展开问题）
     async function loadOverviewData() {
       const container = document.getElementById('members-container');
-      container.innerHTML = '<p class="text-slate-500">載入中...</p>';
+      container.innerHTML = '<p class="text-slate-500 text-sm">載入中...</p>';
 
-      // 获取所有成员与对应专案
-      const { data: profiles } = await supabaseClient.from('profiles').select('*, projects(*)');
-      if (!profiles) return;
+      const { data: profiles, error: pErr } = await supabaseClient.from('profiles').select('*');
+      const { data: projects, error: prjErr } = await supabaseClient.from('projects').select('*');
+
+      if (prjErr) console.error('专案获取失败:', prjErr);
+      
+      // 建立专案缓存
+      (projects || []).forEach(p => { allProjectsMap[p.id] = p; });
 
       container.innerHTML = '';
-      profiles.forEach(p => {
-        const pCount = p.projects ? p.projects.length : 0;
+      
+      const userList = (profiles && profiles.length > 0) ? profiles : [{ id: currentUser?.id || 'admin', username: 'ADMIN' }];
+
+      userList.forEach(p => {
+        const userProjects = (projects || []).filter(prj => prj.user_id === p.id);
+        const pCount = userProjects.length;
+
         const blockHtml = `
           <div class="bg-[#151c2c] border border-[#26334d] rounded-2xl overflow-hidden shadow-lg">
-            <!-- 区块标头 (点击展开/折叠) -->
             <div onclick="toggleMemberBlock('${p.id}')" class="p-4 bg-[#151c2c] hover:bg-[#1c263c] cursor-pointer flex justify-between items-center transition">
               <div class="flex items-center gap-3">
                 <div class="w-8 h-8 rounded-full bg-slate-800 border border-[#26334d] flex items-center justify-center font-bold text-emerald-400 text-xs">
-                  ${p.username.slice(0,2)}
+                  ${(p.username || 'AD').slice(0,2).toUpperCase()}
                 </div>
                 <div>
-                  <h3 class="font-bold text-white text-sm">${p.username} 的 AI 成果看板</h3>
+                  <h3 class="font-bold text-white text-sm">${p.username || 'ADMIN'} 的 AI 成果看板</h3>
                   <span class="text-[10px] text-slate-400">已發布 ${pCount} 個專案</span>
                 </div>
               </div>
               <i id="arrow-${p.id}" class="fa-solid fa-chevron-down text-slate-400 transition-transform"></i>
             </div>
 
-            <!-- 专案列表内容区块 -->
             <div id="block-${p.id}" class="p-4 border-t border-[#26334d]/50 bg-[#0b0f19]/50 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               ${pCount === 0 ? '<p class="text-slate-500 text-xs col-span-full">尚無發布的專案</p>' : ''}
-              ${(p.projects || []).map(prj => `
-                <div onclick="openDetailModal(${prj.id})" class="bg-[#151c2c] border border-[#26334d] hover:border-emerald-500/50 p-4 rounded-xl cursor-pointer transition shadow-sm space-y-2">
+              ${userProjects.map(prj => `
+                <div onclick="openDetailModal('${prj.id}')" class="bg-[#151c2c] border border-[#26334d] hover:border-emerald-500/80 p-4 rounded-xl cursor-pointer transition shadow-sm space-y-2 hover:-translate-y-0.5">
                   <div class="flex justify-between items-start">
-                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">${prj.status}</span>
-                    <span class="text-[10px] text-slate-500">${new Date(prj.created_at).toLocaleDateString()}</span>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">${prj.status || '已發布'}</span>
+                    <span class="text-[10px] text-slate-500">${new Date(prj.created_at || Date.now()).toLocaleDateString()}</span>
                   </div>
-                  <h4 class="font-bold text-slate-100 text-sm line-clamp-1">${prj.title}</h4>
-                  <p class="text-slate-400 text-xs line-clamp-2">${prj.current_situation}</p>
+                  <h4 class="font-bold text-slate-100 text-sm line-clamp-1">${prj.title || '無標題'}</h4>
+                  <p class="text-slate-400 text-xs line-clamp-2">${prj.current_situation || '點擊查看詳情...'}</p>
                 </div>
               `).join('')}
             </div>
@@ -407,29 +411,35 @@
     function toggleMemberBlock(id) {
       const block = document.getElementById(`block-${id}`);
       const arrow = document.getElementById(`arrow-${id}`);
-      block.classList.toggle('hidden');
-      arrow.classList.toggle('rotate-180');
+      if (block) block.classList.toggle('hidden');
+      if (arrow) arrow.classList.toggle('rotate-180');
     }
 
-    // 需求 5 & 6: 打开专案详情与讨论
+    // 打开专案详情与讨论
     async function openDetailModal(projectId) {
       activeProjectId = projectId;
-      const { data: prj } = await supabaseClient.from('projects').select('*, profiles(username)').eq('id', projectId).single();
+      let prj = allProjectsMap[projectId];
       
-      document.getElementById('d-title').innerText = prj.title;
-      document.getElementById('d-author').innerText = `發布者：${prj.profiles ? prj.profiles.username : '未知'}`;
-      document.getElementById('d-status').innerText = prj.status;
+      if (!prj) {
+        const { data } = await supabaseClient.from('projects').select('*').eq('id', projectId).single();
+        prj = data;
+      }
+      
+      if (!prj) return alert('找不到该专案内容');
+
+      document.getElementById('d-title').innerText = prj.title || '无标题';
+      document.getElementById('d-author').innerText = `發布者：${prj.profiles?.username || 'ADMIN'}`;
+      document.getElementById('d-status').innerText = prj.status || '已上線';
       document.getElementById('d-status').className = 'px-2 py-0.5 rounded-md font-bold text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
       
-      document.getElementById('d-current').innerText = prj.current_situation || '无';
-      document.getElementById('d-goal').innerText = prj.expected_goal || '无';
-      document.getElementById('d-guide').innerText = prj.optimization_guide || '无';
+      document.getElementById('d-current').innerText = prj.current_situation || '無現況描述';
+      document.getElementById('d-goal').innerText = prj.expected_goal || '無預期目標';
+      document.getElementById('d-guide').innerText = prj.optimization_guide || '無操作說明';
 
-      // 标签
       const toolsBox = document.getElementById('d-tools');
-      toolsBox.innerHTML = (prj.ai_tools || []).map(t => `<span class="bg-slate-800 text-slate-300 border border-[#26334d] px-2 py-0.5 rounded text-[10px]">${t}</span>`).join('');
+      const toolsList = Array.isArray(prj.ai_tools) ? prj.ai_tools : (prj.ai_tools ? prj.ai_tools.split(',') : []);
+      toolsBox.innerHTML = toolsList.map(t => `<span class="bg-slate-800 text-slate-300 border border-[#26334d] px-2 py-0.5 rounded text-[10px]">${t.trim()}</span>`).join('');
 
-      // 图片与 Demo
       const mediaBox = document.getElementById('d-media');
       let hasMedia = false;
       if (prj.image_url) {
@@ -451,7 +461,7 @@
       openModal('modal-detail');
     }
 
-    // 需求 6: 加载并送出专案建议/探讨
+    // 加载与提交专案建议/探讨
     async function loadComments(projectId) {
       const list = document.getElementById('comments-list');
       list.innerHTML = '<p class="text-slate-500">載入討論中...</p>';
@@ -469,7 +479,7 @@
           <div class="bg-[#0b0f19] p-2.5 rounded-xl border border-[#26334d] flex justify-between items-start">
             <div>
               <div class="flex items-center gap-2 mb-1">
-                <span class="font-bold text-slate-200">${c.profiles ? c.profiles.username : '匿名'}</span>
+                <span class="font-bold text-slate-200">${c.profiles ? c.profiles.username : '成員'}</span>
                 <span class="${isSuggest ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'} border text-[9px] px-1.5 py-0.2 rounded font-bold">
                   ${isSuggest ? '💡 建議' : '📊 實測/方向'}
                 </span>
@@ -493,31 +503,34 @@
       loadComments(activeProjectId);
     });
 
-    // 需求 2: 管理员账号面板逻辑
+    // 账号管理面板（修复状态与显示问题）
     async function loadAdminData() {
       const tbody = document.getElementById('user-table-body');
       tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-slate-500">載入成員列表中...</td></tr>';
-      const { data: users } = await supabaseClient.from('profiles').select('*');
+      const { data: users, error } = await supabaseClient.from('profiles').select('*');
+
+      if (error) console.error('抓取成员失败:', error);
 
       tbody.innerHTML = '';
-      users.forEach(u => {
+      (users || []).forEach(u => {
+        const isActive = u.status === 'active' || u.is_active === true;
         tbody.insertAdjacentHTML('beforeend', `
-          <tr class="hover:bg-[#1c263c]/50">
-            <td class="p-4 font-bold text-white">${u.username}</td>
+          <tr class="hover:bg-[#1c263c]/50 border-b border-[#26334d]/50">
+            <td class="p-4 font-bold text-white">${u.username || '未知'}</td>
             <td class="p-4">
-              <select onchange="updateUserRole('${u.id}', this.value)" class="bg-[#0b0f19] border border-[#26334d] text-slate-300 rounded px-2 py-1">
+              <select onchange="updateUserRole('${u.id}', this.value)" class="bg-[#0b0f19] border border-[#26334d] text-slate-300 rounded px-2 py-1 outline-none">
                 <option value="MEMBER" ${u.role === 'MEMBER' ? 'selected' : ''}>MEMBER</option>
                 <option value="ADMIN" ${u.role === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
               </select>
             </td>
             <td class="p-4">
-              <span class="${u.is_active ? 'text-emerald-400' : 'text-rose-400'} font-bold">
-                ${u.is_active ? '● 正常' : '● 已停用'}
+              <span class="${isActive ? 'text-emerald-400' : 'text-rose-400'} font-bold">
+                ${isActive ? '● 使用中' : '● 已停用'}
               </span>
             </td>
             <td class="p-4 text-right space-x-2">
-              <button onclick="toggleUserActive('${u.id}', ${!u.is_active})" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-[#26334d]">
-                ${u.is_active ? '停用帳號' : '啟用帳號'}
+              <button onclick="toggleUserActive('${u.id}', '${isActive ? 'disabled' : 'active'}')" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-[#26334d] transition">
+                ${isActive ? '停用帳號' : '啟用帳號'}
               </button>
             </td>
           </tr>
@@ -526,16 +539,18 @@
     }
 
     async function updateUserRole(userId, role) {
-      await supabaseClient.from('profiles').update({ role }).eq('id', userId);
-      alert('權限已更新');
+      const { error } = await supabaseClient.from('profiles').update({ role }).eq('id', userId);
+      if (error) alert('更新权限失败: ' + error.message);
+      else alert('權限已更新');
     }
 
-    async function toggleUserActive(userId, is_active) {
-      await supabaseClient.from('profiles').update({ is_active }).eq('id', userId);
-      loadAdminData();
+    async function toggleUserActive(userId, targetStatus) {
+      const { error } = await supabaseClient.from('profiles').update({ status: targetStatus, is_active: targetStatus === 'active' }).eq('id', userId);
+      if (error) alert('修改状态失败: ' + error.message);
+      else loadAdminData();
     }
 
-    // 登录/发布/弹窗控制函数
+    // 弹窗控制函数
     function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
     function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
     function openLoginModal() { openModal('modal-login'); }
@@ -545,7 +560,7 @@
     }
     function openCreateUserModal() { openModal('modal-create-user'); }
 
-    // 表单提交：登入
+    // 表单提交：登录
     document.getElementById('form-login').addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = document.getElementById('l-email').value;
@@ -559,7 +574,7 @@
     document.getElementById('form-project').addEventListener('submit', async (e) => {
       e.preventDefault();
       const tools = document.getElementById('p-tools').value.split(',').map(s => s.trim()).filter(Boolean);
-      await supabaseClient.from('projects').insert([{
+      const { error } = await supabaseClient.from('projects').insert([{
         user_id: currentUser.id,
         title: document.getElementById('p-title').value,
         status: document.getElementById('p-status').value,
@@ -570,9 +585,38 @@
         image_url: document.getElementById('p-image').value,
         demo_url: document.getElementById('p-demo').value
       }]);
+      
+      if (error) return alert('发布失败: ' + error.message);
+
       closeModal('modal-project');
       loadOverviewData();
       alert('🎉 專案發布成功！');
+    });
+
+    // 表单提交：管理员新增账号
+    document.getElementById('form-create-user').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('u-name').value;
+      const email = document.getElementById('u-email').value;
+      const password = document.getElementById('u-pass').value;
+      const role = document.getElementById('u-role').value;
+
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { data: { username: name, role: role } }
+      });
+
+      if (error) {
+        alert('建立账号失败: ' + error.message);
+      } else {
+        if (data.user) {
+          await supabaseClient.from('profiles').upsert([{ id: data.user.id, username: name, role: role, status: 'active' }]);
+        }
+        alert('✅ 账号建立成功！');
+        closeModal('modal-create-user');
+        loadAdminData();
+      }
     });
 
     async function logout() {
