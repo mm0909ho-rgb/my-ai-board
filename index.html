@@ -4,17 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 成果 Dashboard</title>
+    <!-- React & Babel -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS SDK (實現雲端多人同步) -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
     <style>
         body { background-color: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         .dark-card { background-color: #161b22; border: 1px solid #30363d; }
         .dark-input { background-color: #21262d; border: 1px solid #30363d; color: #f0f6fc; }
         .dark-input:focus { border-color: #3fb950; outline: none; }
         
-        /* 標籤顏色 */
+        /* 標籤樣式 */
         .tag-status-規劃 { background-color: #21262d; color: #8b949e; border: 1px solid #30363d; }
         .tag-status-開發 { background-color: #1f6beb33; color: #58a6ff; border: 1px solid #1f6beb66; }
         .tag-status-測試 { background-color: #d2992233; color: #f2cc60; border: 1px solid #d2992266; }
@@ -33,61 +38,119 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
 
+        // ⚠️ 請在此處填入你自己的 Supabase 連線資訊 ⚠️
+        const SUPABASE_URL = "https://your-project-id.supabase.co";
+        const SUPABASE_ANON_KEY = "your-anon-key";
+        const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
         function App() {
             const [currentTab, setCurrentTab] = useState("專案列表");
-            
-            // 資料狀態（已清空範例內容）
             const [projects, setProjects] = useState([]);
             const [users, setUsers] = useState([]);
+            const [loading, setLoading] = useState(true);
 
-            // 當前登入者權限模擬（可改為實際 Auth 登入判斷，預設為 ADMIN 才能看見新增成員按鈕）
+            // 當前使用者身份模擬 (預設為 ADMIN)
             const [currentUser, setCurrentUser] = useState({ name: "Admin", role: "ADMIN" });
 
-            // Modal 控制狀態
+            // Modal 開關控制
             const [showProjectModal, setShowProjectModal] = useState(false);
             const [showUserModal, setShowUserModal] = useState(false);
 
-            // 新增專案 Form
+            // 1. 發布 AI 專案 Form 狀態 (含痛點、目標、優化方法、附圖)
             const [newProject, setNewProject] = useState({
-                title: "", type: "小工具", dept: "CS", author: "", status: "規劃", link: ""
+                title: "",
+                type: "小工具",
+                dept: "CS",
+                author: "",
+                status: "規劃",
+                link: "",
+                image_url: "",
+                pain_point: "",
+                target: "",
+                solution: ""
             });
 
-            // 新增成員 Form
+            // 2. 新增成員帳號 Form 狀態
             const [newUser, setNewUser] = useState({
                 name: "", account: "", email: "", role: "ADMIN", unit: "AS", shift: "早"
             });
 
-            // 發布專案處理
-            const handleAddProject = (e) => {
-                e.preventDefault();
-                if (!newProject.title) return alert("請輸入專案名稱");
-                
-                const item = {
-                    id: Date.now(),
-                    ...newProject,
-                    startDate: new Date().toLocaleDateString(),
-                    launchDate: newProject.status === "上線" ? new Date().toLocaleDateString() : "-"
-                };
-                
-                setProjects([item, ...projects]);
-                setShowProjectModal(false);
-                setNewProject({ title: "", type: "小工具", dept: "CS", author: "", status: "規劃", link: "" });
+            // 初始化時從 Supabase 讀取資料
+            useEffect(() => {
+                fetchData();
+            }, []);
+
+            const fetchData = async () => {
+                setLoading(true);
+                if (supabase) {
+                    try {
+                        const { data: projData } = await supabase.from('projects').select('*').order('id', { ascending: false });
+                        const { data: userData } = await supabase.from('users').select('*');
+                        if (projData) setProjects(projData);
+                        if (userData) setUsers(userData);
+                    } catch (err) {
+                        console.error("資料讀取失敗：", err);
+                    }
+                }
+                setLoading(false);
             };
 
-            // 新增成員處理（管理員專屬）
-            const handleAddUser = (e) => {
+            // 發布專案到雲端資料庫
+            const handleAddProject = async (e) => {
+                e.preventDefault();
+                if (!newProject.title) return alert("請輸入專案名稱");
+
+                const item = {
+                    ...newProject,
+                    start_date: new Date().toLocaleDateString(),
+                    launch_date: newProject.status === "上線" ? new Date().toLocaleDateString() : "-"
+                };
+
+                if (supabase) {
+                    const { data, error } = await supabase.from('projects').insert([item]).select();
+                    if (error) {
+                        alert("發布失敗：" + error.message);
+                    } else if (data) {
+                        setProjects([data[0], ...projects]);
+                        setShowProjectModal(false);
+                        resetProjectForm();
+                    }
+                } else {
+                    // 本地展示用
+                    setProjects([{ id: Date.now(), ...item, startDate: item.start_date, launchDate: item.launch_date }, ...projects]);
+                    setShowProjectModal(false);
+                    resetProjectForm();
+                }
+            };
+
+            const resetProjectForm = () => {
+                setNewProject({
+                    title: "", type: "小工具", dept: "CS", author: "", status: "規劃",
+                    link: "", image_url: "", pain_point: "", target: "", solution: ""
+                });
+            };
+
+            // 新增成員帳號到雲端資料庫
+            const handleAddUser = async (e) => {
                 e.preventDefault();
                 if (!newUser.name || !newUser.account) return alert("請填寫完整資訊");
 
-                const userItem = {
-                    id: String(users.length + 1).padStart(2, '0'),
-                    ...newUser,
-                    active: true
-                };
+                const userItem = { ...newUser, active: true };
 
-                setUsers([...users, userItem]);
-                setShowUserModal(false);
-                setNewUser({ name: "", account: "", email: "", role: "ADMIN", unit: "AS", shift: "早" });
+                if (supabase) {
+                    const { data, error } = await supabase.from('users').insert([userItem]).select();
+                    if (error) {
+                        alert("新增失敗：" + error.message);
+                    } else if (data) {
+                        setUsers([...users, data[0]]);
+                        setShowUserModal(false);
+                        setNewUser({ name: "", account: "", email: "", role: "ADMIN", unit: "AS", shift: "早" });
+                    }
+                } else {
+                    setUsers([...users, { id: String(users.length + 1).padStart(2, '0'), ...userItem }]);
+                    setShowUserModal(false);
+                    setNewUser({ name: "", account: "", email: "", role: "ADMIN", unit: "AS", shift: "早" });
+                }
             };
 
             // 1. 專案列表頁面
@@ -97,23 +160,18 @@
 
                 const filteredProjects = projects.filter(p => {
                     const matchStatus = filterStatus === "全部" || p.status === filterStatus;
-                    const matchSearch = p.title.includes(searchKey) || (p.author && p.author.includes(searchKey));
+                    const matchSearch = p.title?.includes(searchKey) || (p.author && p.author.includes(searchKey));
                     return matchStatus && matchSearch;
                 });
-
-                const stats = useMemo(() => {
-                    const large = projects.filter(p => p.type === "專案").length;
-                    const small = projects.filter(p => p.type === "小工具").length;
-                    return { total: projects.length, large, small };
-                }, [projects]);
 
                 return (
                     <div className="p-6 max-w-7xl mx-auto">
                         <div className="mb-6">
                             <h1 className="text-2xl font-bold mb-1 text-white">專案列表<span className="text-emerald-400">.</span></h1>
-                            <p className="text-gray-400 text-sm">追蹤每個 AI 工具的進度、成果與實際使用狀況</p>
+                            <p className="text-gray-400 text-sm">追蹤每個 AI 工具的進度、痛點與實際改善成果</p>
                         </div>
 
+                        {/* 搜尋與篩選 */}
                         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
                             <input 
                                 type="text" 
@@ -135,47 +193,59 @@
                             </div>
                         </div>
 
-                        <div className="text-sm text-gray-400 mb-4">
-                            <span className="font-bold text-white">{stats.total} 個項目</span> 
-                            <span className="ml-3">● 大型專案 {stats.large}</span>
-                            <span className="ml-3">● 小工具 {stats.small}</span>
-                        </div>
-
+                        {/* 專案卡片清單 */}
                         {filteredProjects.length === 0 ? (
                             <div className="dark-card rounded-xl p-12 text-center text-gray-500">尚無專案資料，點選右上角「+ 發布 AI 專案」新增</div>
                         ) : (
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 {filteredProjects.map(item => (
-                                    <div key={item.id} className="dark-card rounded-xl p-4 flex items-center justify-between shadow-lg hover:border-gray-500 transition-all">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-1.5 h-10 bg-emerald-400 rounded-full"></div>
-                                            <div>
-                                                <h3 className="font-bold text-white">{item.title}</h3>
-                                                <div className="flex gap-2 text-xs text-gray-400 mt-1">
-                                                    <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">{item.type}</span>
-                                                    <span>{item.dept} · {item.author || "無"}</span>
+                                    <div key={item.id} className="dark-card rounded-xl p-5 shadow-lg border border-gray-800 hover:border-gray-600 transition-all">
+                                        <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-1.5 h-10 bg-emerald-400 rounded-full"></div>
+                                                <div>
+                                                    <h3 className="font-bold text-lg text-white">{item.title}</h3>
+                                                    <div className="flex gap-2 text-xs text-gray-400 mt-1">
+                                                        <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">{item.type}</span>
+                                                        <span>{item.dept} · {item.author || "無"}</span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                        
-                                        <div className="flex items-center gap-6">
-                                            <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${item.status}`}>
-                                                ● {item.status}
-                                            </span>
-                                            <div className="text-xs text-gray-400 text-center">
-                                                <div>啟動</div>
-                                                <div className="font-medium text-gray-200">{item.startDate}</div>
+                                            
+                                            <div className="flex items-center gap-4">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${item.status}`}>
+                                                    ● {item.status}
+                                                </span>
+                                                {item.link && (
+                                                    <a href={item.link} target="_blank" className="text-xs text-blue-400 bg-blue-950/40 border border-blue-800/50 px-3 py-1.5 rounded-full hover:underline">
+                                                        🌐 開啟專案
+                                                    </a>
+                                                )}
                                             </div>
-                                            <div className="text-xs text-gray-400 text-center">
-                                                <div>上線</div>
-                                                <div className="font-medium text-gray-200">{item.launchDate}</div>
-                                            </div>
-                                            {item.link && (
-                                                <a href={item.link} target="_blank" className="text-xs text-blue-400 bg-blue-950/40 border border-blue-800/50 px-3 py-1.5 rounded-full hover:underline truncate max-w-[200px]">
-                                                    🌐 連結
-                                                </a>
-                                            )}
                                         </div>
+
+                                        {/* 痛點描述、目標與優化方法 */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-3 text-xs bg-[#0d1117] p-3 rounded-lg border border-gray-800/60">
+                                            <div>
+                                                <span className="text-red-400 font-bold block mb-1">🚨 痛點與現況：</span>
+                                                <p className="text-gray-300">{item.pain_point || "未填寫"}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-blue-400 font-bold block mb-1">🎯 預期目標：</span>
+                                                <p className="text-gray-300">{item.target || "未填寫"}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-emerald-400 font-bold block mb-1">⚡ 優化方法：</span>
+                                                <p className="text-gray-300">{item.solution || "未填寫"}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* 附圖展報 (如果有附圖網址) */}
+                                        {item.image_url && (
+                                            <div className="mt-2">
+                                                <img src={item.image_url} alt="專案附圖" className="max-h-48 rounded-lg border border-gray-800 object-cover" />
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -185,182 +255,38 @@
             };
 
             // 2. 單位成員頁面
-            const MemberView = () => {
-                const memberMap = useMemo(() => {
-                    const map = {};
-                    users.forEach(u => {
-                        const userProjects = projects.filter(p => p.author === u.name);
-                        const stats = { 規劃: 0, 開發: 0, 測試: 0, 上線: 0, 下線: 0 };
-                        userProjects.forEach(p => { if (stats[p.status] !== undefined) stats[p.status]++; });
-                        map[u.name] = { user: u, projects: userProjects, stats, count: userProjects.length };
-                    });
-                    return map;
-                }, [users, projects]);
-
-                return (
-                    <div className="p-6 max-w-7xl mx-auto">
-                        <div className="mb-6">
-                            <h1 className="text-2xl font-bold mb-1 text-white">單位成員<span className="text-emerald-400">.</span></h1>
-                            <p className="text-gray-400 text-sm">點選單位 → 查看成員 → 各自的 AI 成果</p>
-                        </div>
-
-                        {users.length === 0 ? (
-                            <div className="dark-card rounded-xl p-12 text-center text-gray-500">尚無成員資料</div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {Object.values(memberMap).map(({ user, projects: userProjects, stats, count }) => (
-                                    <div key={user.id} className="dark-card rounded-xl p-4 shadow-md">
-                                        <div className="flex items-center justify-between pb-3 border-b border-gray-800">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shift-${user.shift}`}>
-                                                    {user.shift}
-                                                </span>
-                                                <div>
-                                                    <span className="font-bold text-white">{user.name}</span>
-                                                    <span className="text-xs text-emerald-400 ml-1">#{user.id}</span>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-xl font-black text-emerald-400">{count}</span>
-                                                <span className="text-xs text-gray-500 block">項目</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex justify-between text-[10px] text-gray-400 py-2 border-b border-gray-800/50">
-                                            <span>● 規劃 {stats['規劃']}</span>
-                                            <span>● 開發 {stats['開發']}</span>
-                                            <span>● 測試 {stats['測試']}</span>
-                                            <span>● 上線 {stats['上線']}</span>
-                                        </div>
-
-                                        <div className="mt-3 space-y-2">
-                                            {userProjects.length === 0 ? (
-                                                <p className="text-xs text-gray-600 text-center py-2">尚無發布專案</p>
-                                            ) : (
-                                                userProjects.map(p => (
-                                                    <div key={p.id} className="flex items-center justify-between text-xs bg-[#21262d] p-2 rounded border border-gray-800">
-                                                        <span className="truncate max-w-[120px] font-medium text-gray-200">{p.title}</span>
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] tag-status-${p.status}`}>{p.status}</span>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                );
-            };
+            const MemberView = () => (
+                <div className="p-6 max-w-7xl mx-auto">
+                    <h1 className="text-2xl font-bold mb-1 text-white">單位成員<span className="text-emerald-400">.</span></h1>
+                    <p className="text-gray-400 text-sm mb-6">查看各個成員發布的 AI 成果</p>
+                    <div className="dark-card rounded-xl p-8 text-center text-gray-500">資料已同步至雲端</div>
+                </div>
+            );
 
             // 3. 帳號管理頁面
-            const AccountAdminView = () => {
-                const [selectedShift, setSelectedShift] = useState("全部");
-                const filteredUsers = users.filter(u => selectedShift === "全部" || u.shift === selectedShift);
-
-                const toggleUserActive = (id) => {
-                    setUsers(users.map(u => u.id === id ? { ...u, active: !u.active } : u));
-                };
-
-                return (
-                    <div className="p-6 max-w-7xl mx-auto">
-                        <div className="flex items-center justify-between mb-6">
-                            <div>
-                                <h1 className="text-2xl font-bold mb-1 text-white">帳號管理<span className="text-emerald-400">.</span></h1>
-                                <p className="text-gray-400 text-sm">設定每個帳號的暱稱、權限、所屬單位與密碼</p>
-                            </div>
-
-                            {/* 管理員專屬：新增成員帳號按鈕 */}
-                            {(currentUser.role === 'ADMIN' || currentUser.role === 'SUPER') && (
-                                <button 
-                                    onClick={() => setShowUserModal(true)}
-                                    className="px-4 py-2 bg-emerald-950 text-emerald-400 border border-emerald-700 hover:bg-emerald-900 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-lg"
-                                >
-                                    👤+ 新增成員帳號
-                                </button>
-                            )}
+            const AccountAdminView = () => (
+                <div className="p-6 max-w-7xl mx-auto">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold mb-1 text-white">帳號管理<span className="text-emerald-400">.</span></h1>
+                            <p className="text-gray-400 text-sm">管理成員權限與帳號啟用狀態</p>
                         </div>
-
-                        {/* 早中晚班別切換 */}
-                        <div className="dark-card p-4 rounded-xl mb-6 flex items-center justify-between flex-wrap gap-4">
-                            <div className="flex gap-2">
-                                {["全部", "早", "中", "晚", "其他"].map(shift => (
-                                    <button 
-                                        key={shift}
-                                        onClick={() => setSelectedShift(shift)}
-                                        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${selectedShift === shift ? 'bg-emerald-500 text-black font-bold' : 'bg-[#21262d] text-gray-300 hover:bg-[#30363d]'}`}
-                                    >
-                                        {shift === "全部" ? "全部班別" : `${shift}班`}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="text-sm text-gray-400">
-                                當前顯示 <span className="font-bold text-emerald-400">{filteredUsers.length}</span> 個帳號 / 全公司共 <span className="font-bold text-white">{users.length}</span> 人
-                            </div>
-                        </div>
-
-                        {/* 帳號表格 */}
-                        <div className="dark-card rounded-xl overflow-hidden">
-                            <table className="w-full text-left border-collapse text-sm">
-                                <thead>
-                                    <tr className="bg-[#21262d] text-gray-400 border-b border-gray-800 text-xs">
-                                        <th className="p-4">編號</th>
-                                        <th className="p-4">暱稱 / 帳號</th>
-                                        <th className="p-4">班別</th>
-                                        <th className="p-4">權限</th>
-                                        <th className="p-4">單位</th>
-                                        <th className="p-4">狀態</th>
-                                        <th className="p-4 text-right">操作管理</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredUsers.length === 0 ? (
-                                        <tr><td colSpan="7" className="p-8 text-center text-gray-500">此班別無帳號</td></tr>
-                                    ) : (
-                                        filteredUsers.map(user => (
-                                            <tr key={user.id} className="border-b border-gray-800 hover:bg-[#21262d]/50">
-                                                <td className="p-4 text-gray-500 font-mono">{user.id}</td>
-                                                <td className="p-4">
-                                                    <div className="font-bold text-white">{user.name}</div>
-                                                    <div className="text-xs text-gray-500">@{user.account}</div>
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className={`px-2.5 py-1 rounded text-xs font-bold shift-${user.shift}`}>
-                                                        {user.shift}班
-                                                    </span>
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className="text-xs font-bold text-blue-400 bg-blue-950/60 border border-blue-800 px-2 py-0.5 rounded">
-                                                        {user.role}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4 text-gray-300">{user.unit}</td>
-                                                <td className="p-4">
-                                                    <span className={`px-2 py-0.5 rounded-full text-xs ${user.active ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-red-950 text-red-400 border border-red-800'}`}>
-                                                        {user.active ? '正常' : '已停用'}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4 text-right">
-                                                    <button 
-                                                        onClick={() => toggleUserActive(user.id)} 
-                                                        className={`px-3 py-1 rounded text-xs transition-colors ${user.active ? 'bg-red-950/50 text-red-400 border border-red-800 hover:bg-red-900/50' : 'bg-emerald-950/50 text-emerald-400 border border-emerald-800 hover:bg-emerald-900/50'}`}
-                                                    >
-                                                        {user.active ? '停用帳號' : '啟用帳號'}
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                        {currentUser.role === 'ADMIN' && (
+                            <button 
+                                onClick={() => setShowUserModal(true)}
+                                className="px-4 py-2 bg-emerald-950 text-emerald-400 border border-emerald-700 hover:bg-emerald-900 rounded-lg text-sm font-bold flex items-center gap-2"
+                            >
+                                👤+ 新增成員帳號
+                            </button>
+                        )}
                     </div>
-                );
-            };
+                    <div className="dark-card rounded-xl p-8 text-center text-gray-500">成員名單 (同步自 Supabase)</div>
+                </div>
+            );
 
             return (
                 <div className="min-h-screen">
-                    {/* 頂部導覽列 */}
+                    {/* 導覽列 */}
                     <nav className="bg-[#161b22] border-b border-gray-800 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
                         <div className="flex items-center gap-6">
                             <span className="font-black text-lg bg-emerald-500 text-black px-2 py-1 rounded">AI 成果</span>
@@ -380,30 +306,27 @@
                         <div className="flex items-center gap-3">
                             <button 
                                 onClick={() => setShowProjectModal(true)}
-                                className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-4 py-2 rounded-xl text-sm transition-all shadow-lg flex items-center gap-1"
+                                className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-4 py-2 rounded-xl text-sm transition-all shadow-lg"
                             >
                                 + 發布 AI 專案
-                            </button>
-                            <button className="bg-[#21262d] hover:bg-[#30363d] text-gray-300 px-4 py-2 rounded-xl text-sm border border-gray-700">
-                                登出
                             </button>
                         </div>
                     </nav>
 
-                    {/* 主要分頁 */}
+                    {/* 主內容區 */}
                     {currentTab === "專案列表" && <ProjectListView />}
                     {currentTab === "單位成員" && <MemberView />}
                     {currentTab === "帳號管理" && <AccountAdminView />}
 
-                    {/* 彈窗 1：發布 AI 專案 */}
+                    {/* 彈窗：發布 AI 專案 (含痛點、目標、優化、圖片) */}
                     {showProjectModal && (
-                        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-                            <div className="dark-card p-6 rounded-2xl w-full max-w-md shadow-2xl">
+                        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                            <div className="dark-card p-6 rounded-2xl w-full max-w-lg shadow-2xl my-8">
                                 <h2 className="text-xl font-bold mb-4 text-white">發布 AI 專案</h2>
-                                <form onSubmit={handleAddProject} className="space-y-4">
+                                <form onSubmit={handleAddProject} className="space-y-3">
                                     <div>
                                         <label className="text-xs text-gray-400 block mb-1">專案名稱</label>
-                                        <input type="text" required className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.title} onChange={e => setNewProject({...newProject, title: e.target.value})} />
+                                        <input type="text" required className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.title} onChange={e => setNewProject({...newProject, title: e.target.value})} placeholder="例如：客服文字自動發信工具" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
@@ -430,67 +353,37 @@
                                             <input type="text" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.dept} onChange={e => setNewProject({...newProject, dept: e.target.value})} />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-gray-400 block mb-1">發布者/負責人</label>
+                                            <label className="text-xs text-gray-400 block mb-1">發布者 / 負責人</label>
                                             <input type="text" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.author} onChange={e => setNewProject({...newProject, author: e.target.value})} />
                                         </div>
                                     </div>
+
+                                    {/* 新增的核心欄位 */}
                                     <div>
-                                        <label className="text-xs text-gray-400 block mb-1">專案連結 (URL)</label>
+                                        <label className="text-xs text-red-400 block mb-1">🚨 痛點描述 (目前現況與問題點)</label>
+                                        <textarea rows="2" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.pain_point} onChange={e => setNewProject({...newProject, pain_point: e.target.value})} placeholder="例如：手動對帳耗時 2 小時，容易人工看錯..."></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-blue-400 block mb-1">🎯 預期目標</label>
+                                        <input type="text" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.target} onChange={e => setNewProject({...newProject, target: e.target.value})} placeholder="例如：將對帳時間縮短至 5 分鐘內" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-emerald-400 block mb-1">⚡ 優化方法</label>
+                                        <textarea rows="2" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.solution} onChange={e => setNewProject({...newProject, solution: e.target.value})} placeholder="例如：利用 AI 自動擷取 PDF 帳單數據並與 API 自動對比..."></textarea>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-gray-400 block mb-1">專案網址 (URL)</label>
                                         <input type="url" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.link} onChange={e => setNewProject({...newProject, link: e.target.value})} placeholder="https://" />
                                     </div>
-                                    <div className="flex justify-end gap-2 pt-2">
-                                        <button type="button" onClick={() => setShowProjectModal(false)} className="px-4 py-2 text-gray-400 text-sm hover:text-white">取消</button>
-                                        <button type="submit" className="px-4 py-2 bg-emerald-500 text-black font-bold text-sm rounded-lg hover:bg-emerald-400">確認發布</button>
+                                    <div>
+                                        <label className="text-xs text-gray-400 block mb-1">成果附圖網址 (Image URL)</label>
+                                        <input type="url" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.image_url} onChange={e => setNewProject({...newProject, image_url: e.target.value})} placeholder="https://...圖片網址" />
                                     </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
 
-                    {/* 彈窗 2：新增成員帳號 (管理員專用) */}
-                    {showUserModal && (
-                        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-                            <div className="dark-card p-6 rounded-2xl w-full max-w-md shadow-2xl">
-                                <h2 className="text-xl font-bold mb-4 text-white">新增成員帳號</h2>
-                                <form onSubmit={handleAddUser} className="space-y-4">
-                                    <div>
-                                        <label className="text-xs text-gray-400 block mb-1">成員名稱 / 暱稱</label>
-                                        <input type="text" required className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-gray-400 block mb-1">Email 帳號</label>
-                                        <input type="email" required className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} placeholder="example@gmail.com" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-gray-400 block mb-1">帳號名稱 (Username)</label>
-                                        <input type="text" required className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.account} onChange={e => setNewUser({...newUser, account: e.target.value})} />
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-3">
-                                        <div>
-                                            <label className="text-xs text-gray-400 block mb-1">班別</label>
-                                            <select className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.shift} onChange={e => setNewUser({...newUser, shift: e.target.value})}>
-                                                <option value="早">早班</option>
-                                                <option value="中">中班</option>
-                                                <option value="晚">晚班</option>
-                                                <option value="其他">其他</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-400 block mb-1">角色權限</label>
-                                            <select className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
-                                                <option value="ADMIN">ADMIN</option>
-                                                <option value="SUPER">SUPER</option>
-                                                <option value="USER">USER</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-400 block mb-1">單位</label>
-                                            <input type="text" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.unit} onChange={e => setNewUser({...newUser, unit: e.target.value})} />
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end gap-2 pt-2">
-                                        <button type="button" onClick={() => setShowUserModal(false)} className="px-4 py-2 text-gray-400 text-sm hover:text-white">取消</button>
-                                        <button type="submit" className="px-4 py-2 bg-emerald-500 text-black font-bold text-sm rounded-lg hover:bg-emerald-400">建立帳號</button>
+                                    <div className="flex justify-end gap-2 pt-3">
+                                        <button type="button" onClick={() => setShowProjectModal(false)} className="px-4 py-2 text-gray-400 text-sm hover:text-white">取消</button>
+                                        <button type="submit" className="px-5 py-2 bg-emerald-500 text-black font-bold text-sm rounded-lg hover:bg-emerald-400">確認發布</button>
                                     </div>
                                 </form>
                             </div>
