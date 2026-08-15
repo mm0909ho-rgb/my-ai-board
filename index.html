@@ -9,16 +9,36 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f4f4f0; color: #1a1a1a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .tag-status-规划 { background-color: #e5e7eb; color: #4b5563; }
-        .tag-status-开发 { background-color: #dbeafe; color: #1d4ed8; }
-        .tag-status-测试 { background-color: #fef3c7; color: #d97706; }
-        .tag-status-上线 { background-color: #dcfce7; color: #15803d; }
-        .tag-status-下线 { background-color: #fee2e2; color: #b91c1c; }
-        .shift-早 { background-color: #3b82f6; color: white; }
-        .shift-中 { background-color: #2563eb; color: white; }
-        .shift-晚 { background-color: #1e293b; color: white; }
-        .shift-其他 { background-color: #84cc16; color: white; }
+        body { 
+            background-color: #0d1117; 
+            color: #e6edf3; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        }
+        .dark-card { 
+            background-color: #161b22; 
+            border: 1px solid #30363d; 
+        }
+        .dark-input { 
+            background-color: #21262d; 
+            border: 1px solid #30363d; 
+            color: #f0f6fc; 
+        }
+        .dark-input:focus {
+            border-color: #58a6ff;
+            outline: none;
+        }
+        /* 標籤顏色 - 深色適配 */
+        .tag-status-规划 { background-color: #21262d; color: #8b949e; border: 1px solid #30363d; }
+        .tag-status-开发 { background-color: #1f6beb33; color: #58a6ff; border: 1px solid #1f6beb66; }
+        .tag-status-测试 { background-color: #d2992233; color: #f2cc60; border: 1px solid #d2992266; }
+        .tag-status-上线 { background-color: #23863633; color: #3fb950; border: 1px solid #23863666; }
+        .tag-status-下线 { background-color: #da363333; color: #f85149; border: 1px solid #da363366; }
+
+        /* 班別徽章 */
+        .shift-早 { background-color: #1f6beb; color: #ffffff; }
+        .shift-中 { background-color: #8957e5; color: #ffffff; }
+        .shift-晚 { background-color: #3fb950; color: #ffffff; }
+        .shift-其他 { background-color: #6e7681; color: #ffffff; }
     </style>
 </head>
 <body>
@@ -27,7 +47,7 @@
     <script type="text/babel">
         const { useState, useMemo } = React;
 
-        // Mock 初始資料
+        // 測試資料（可換成 Supabase API 讀取）
         const INITIAL_USERS = [
             { id: "01", name: "coo", account: "admin", role: "SUPER", unit: "AS", shift: "早", active: true },
             { id: "02", name: "ED", account: "admin03", role: "SUPER", unit: "AS", shift: "早", active: true },
@@ -52,7 +72,7 @@
             const [projects, setProjects] = useState(INITIAL_PROJECTS);
             const [users, setUsers] = useState(INITIAL_USERS);
 
-            // 1. 專案列表頁面組件
+            // 1. 專案列表頁面（深色主題）
             const ProjectListView = () => {
                 const [filterStatus, setFilterStatus] = useState("全部");
                 const [searchKey, setSearchKey] = useState("");
@@ -72,16 +92,16 @@
                 return (
                     <div className="p-6 max-w-7xl mx-auto">
                         <div className="mb-6">
-                            <h1 className="text-2xl font-bold mb-1">專案列表<span className="text-blue-600">.</span></h1>
-                            <p className="text-gray-500 text-sm">追蹤每個 AI 工具的進度、成果與實際使用狀況</p>
+                            <h1 className="text-2xl font-bold mb-1 text-white">專案列表<span className="text-emerald-400">.</span></h1>
+                            <p className="text-gray-400 text-sm">追蹤每個 AI 工具的進度、成果與實際使用狀況</p>
                         </div>
 
-                        {/* 搜尋與標籤列 */}
+                        {/* 搜尋與小標籤 (測試/規劃/上線/下線) */}
                         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
                             <input 
                                 type="text" 
                                 placeholder="搜尋專案、負責人..." 
-                                className="px-4 py-2 rounded-full border border-gray-300 w-80 text-sm bg-white shadow-sm focus:outline-none"
+                                className="px-4 py-2 rounded-full dark-input w-80 text-sm"
                                 value={searchKey}
                                 onChange={(e) => setSearchKey(e.target.value)}
                             />
@@ -90,7 +110,7 @@
                                     <button 
                                         key={status}
                                         onClick={() => setFilterStatus(status)}
-                                        className={`px-4 py-1.5 rounded-full text-sm transition-colors ${filterStatus === status ? 'bg-black text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+                                        className={`px-4 py-1.5 rounded-full text-sm transition-all ${filterStatus === status ? 'bg-emerald-500 text-black font-bold' : 'bg-[#21262d] text-gray-300 hover:bg-[#30363d]'}`}
                                     >
                                         ● {status}
                                     </button>
@@ -98,41 +118,41 @@
                             </div>
                         </div>
 
-                        <div className="text-sm text-gray-500 mb-4">
-                            <span className="font-bold text-black">{stats.total} 個項目</span> 
+                        <div className="text-sm text-gray-400 mb-4">
+                            <span className="font-bold text-white">{stats.total} 個項目</span> 
                             <span className="ml-3">● 大型專案 {stats.large}</span>
                             <span className="ml-3">● 小工具 {stats.small}</span>
                         </div>
 
-                        {/* 專案列表卡片 */}
+                        {/* 專案卡片列表 */}
                         <div className="space-y-3">
                             {filteredProjects.map(item => (
-                                <div key={item.id} className="bg-white rounded-xl p-4 flex items-center justify-between shadow-sm hover:shadow transition-shadow border border-gray-100">
+                                <div key={item.id} className="dark-card rounded-xl p-4 flex items-center justify-between shadow-lg hover:border-gray-500 transition-all">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-2 h-12 bg-blue-500 rounded-full"></div>
+                                        <div className="w-1.5 h-10 bg-emerald-400 rounded-full"></div>
                                         <div>
-                                            <h3 className="font-bold text-gray-800">{item.title}</h3>
+                                            <h3 className="font-bold text-white">{item.title}</h3>
                                             <div className="flex gap-2 text-xs text-gray-400 mt-1">
-                                                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded">{item.type}</span>
+                                                <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">{item.type}</span>
                                                 <span>{item.dept} · {item.author}</span>
                                             </div>
                                         </div>
                                     </div>
                                     
-                                    <div className="flex items-center gap-8">
+                                    <div className="flex items-center gap-6">
                                         <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${item.status}`}>
                                             ● {item.status}
                                         </span>
                                         <div className="text-xs text-gray-400 text-center">
                                             <div>啟動</div>
-                                            <div className="font-medium text-gray-600">{item.startDate}</div>
+                                            <div className="font-medium text-gray-200">{item.startDate}</div>
                                         </div>
                                         <div className="text-xs text-gray-400 text-center">
                                             <div>上線</div>
-                                            <div className="font-medium text-gray-600">{item.launchDate}</div>
+                                            <div className="font-medium text-gray-200">{item.launchDate}</div>
                                         </div>
                                         {item.link && (
-                                            <a href={item.link} target="_blank" className="text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:underline truncate max-w-[200px]">
+                                            <a href={item.link} target="_blank" className="text-xs text-blue-400 bg-blue-950/40 border border-blue-800/50 px-3 py-1.5 rounded-full hover:underline truncate max-w-[200px]">
                                                 🌐 {item.link}
                                             </a>
                                         )}
@@ -144,9 +164,8 @@
                 );
             };
 
-            // 2. 單位成員頁面組件
+            // 2. 單位成員頁面（顯示各自發布幾項）
             const MemberView = () => {
-                // 按成員分組專案
                 const memberMap = useMemo(() => {
                     const map = {};
                     users.forEach(u => {
@@ -161,46 +180,43 @@
                 return (
                     <div className="p-6 max-w-7xl mx-auto">
                         <div className="mb-6">
-                            <h1 className="text-2xl font-bold mb-1">單位成員<span className="text-blue-600">.</span></h1>
-                            <p className="text-gray-500 text-sm">點選單位 → 查看成員 → 各自的 AI 成果</p>
+                            <h1 className="text-2xl font-bold mb-1 text-white">單位成員<span className="text-emerald-400">.</span></h1>
+                            <p className="text-gray-400 text-sm">點選單位 → 查看成員 → 各自的 AI 成果</p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             {Object.values(memberMap).map(({ user, projects: userProjects, stats, count }) => (
-                                <div key={user.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                                    {/* 個人標頭 */}
-                                    <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                                <div key={user.id} className="dark-card rounded-xl p-4 shadow-md">
+                                    <div className="flex items-center justify-between pb-3 border-b border-gray-800">
                                         <div className="flex items-center gap-2">
                                             <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shift-${user.shift}`}>
                                                 {user.shift}
                                             </span>
                                             <div>
-                                                <span className="font-bold text-gray-800">{user.name}</span>
-                                                <span className="text-xs text-blue-500 ml-1">#{user.id}</span>
+                                                <span className="font-bold text-white">{user.name}</span>
+                                                <span className="text-xs text-emerald-400 ml-1">#{user.id}</span>
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <span className="text-xl font-black text-gray-800">{count}</span>
-                                            <span className="text-xs text-gray-400 block">項目</span>
+                                            <span className="text-xl font-black text-emerald-400">{count}</span>
+                                            <span className="text-xs text-gray-500 block">項目</span>
                                         </div>
                                     </div>
 
-                                    {/* 狀態數據小統計 */}
-                                    <div className="flex justify-between text-[10px] text-gray-400 py-2 border-b border-gray-50">
+                                    <div className="flex justify-between text-[10px] text-gray-400 py-2 border-b border-gray-800/50">
                                         <span>● 規劃 {stats['規劃']}</span>
                                         <span>● 開發 {stats['開發']}</span>
                                         <span>● 測試 {stats['測試']}</span>
                                         <span>● 上線 {stats['上线']}</span>
                                     </div>
 
-                                    {/* 專案清單 */}
                                     <div className="mt-3 space-y-2">
                                         {userProjects.length === 0 ? (
-                                            <p className="text-xs text-gray-300 text-center py-2">尚無發布專案</p>
+                                            <p className="text-xs text-gray-600 text-center py-2">尚無發布專案</p>
                                         ) : (
                                             userProjects.map(p => (
-                                                <div key={p.id} className="flex items-center justify-between text-xs bg-gray-50 p-2 rounded">
-                                                    <span className="truncate max-w-[120px] font-medium text-gray-700">{p.title}</span>
+                                                <div key={p.id} className="flex items-center justify-between text-xs bg-[#21262d] p-2 rounded border border-gray-800">
+                                                    <span className="truncate max-w-[120px] font-medium text-gray-200">{p.title}</span>
                                                     <span className={`px-2 py-0.5 rounded text-[10px] tag-status-${p.status}`}>{p.status}</span>
                                                 </div>
                                             ))
@@ -213,20 +229,17 @@
                 );
             };
 
-            // 3. 帳號管理頁面組件
+            // 3. 帳號管理頁面（早中晚班別分類 & 管理員操作）
             const AccountAdminView = () => {
                 const [selectedShift, setSelectedShift] = useState("全部");
 
-                // 按班別篩選
                 const filteredUsers = users.filter(u => selectedShift === "全部" || u.shift === selectedShift);
 
-                // 密碼修改
                 const handleResetPassword = (userName) => {
                     const newPwd = prompt(`請輸入 ${userName} 的新密碼：`);
                     if (newPwd) alert(`使用者 ${userName} 密碼重置成功！`);
                 };
 
-                // 帳號啟用/停用切換
                 const toggleUserActive = (id) => {
                     setUsers(users.map(u => u.id === id ? { ...u, active: !u.active } : u));
                 };
@@ -234,33 +247,33 @@
                 return (
                     <div className="p-6 max-w-7xl mx-auto">
                         <div className="mb-6">
-                            <h1 className="text-2xl font-bold mb-1">帳號管理<span className="text-blue-600">.</span></h1>
-                            <p className="text-gray-500 text-sm">設定每個帳號的暱稱、權限、所屬單位與密碼</p>
+                            <h1 className="text-2xl font-bold mb-1 text-white">帳號管理<span className="text-emerald-400">.</span></h1>
+                            <p className="text-gray-400 text-sm">設定每個帳號的暱稱、權限、所屬單位與密碼</p>
                         </div>
 
-                        {/* 班別分類切換列 & 總人數統計 */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm mb-6 flex items-center justify-between flex-wrap gap-4">
+                        {/* 早中晚班別分類與總人數 */}
+                        <div className="dark-card p-4 rounded-xl mb-6 flex items-center justify-between flex-wrap gap-4">
                             <div className="flex gap-2">
                                 {["全部", "早", "中", "晚", "其他"].map(shift => (
                                     <button 
                                         key={shift}
                                         onClick={() => setSelectedShift(shift)}
-                                        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedShift === shift ? 'bg-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${selectedShift === shift ? 'bg-emerald-500 text-black font-bold' : 'bg-[#21262d] text-gray-300 hover:bg-[#30363d]'}`}
                                     >
                                         {shift === "全部" ? "全部班別" : `${shift}班`}
                                     </button>
                                 ))}
                             </div>
-                            <div className="text-sm text-gray-500">
-                                統計：當前展示 <span className="font-bold text-black">{filteredUsers.length}</span> 個帳號 / 全公司共 <span className="font-bold text-black">{users.length}</span> 人
+                            <div className="text-sm text-gray-400">
+                                當前顯示 <span className="font-bold text-emerald-400">{filteredUsers.length}</span> 個帳號 / 全公司共 <span className="font-bold text-white">{users.length}</span> 人
                             </div>
                         </div>
 
-                        {/* 帳號清單列表 */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        {/* 帳號清單表格 */}
+                        <div className="dark-card rounded-xl overflow-hidden">
                             <table className="w-full text-left border-collapse text-sm">
                                 <thead>
-                                    <tr className="bg-gray-50 text-gray-400 border-b border-gray-100 text-xs">
+                                    <tr className="bg-[#21262d] text-gray-400 border-b border-gray-800 text-xs">
                                         <th className="p-4">編號</th>
                                         <th className="p-4">暱稱 / 帳號</th>
                                         <th className="p-4">班別</th>
@@ -272,11 +285,11 @@
                                 </thead>
                                 <tbody>
                                     {filteredUsers.map(user => (
-                                        <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50">
-                                            <td className="p-4 text-gray-400 font-mono">{user.id}</td>
+                                        <tr key={user.id} className="border-b border-gray-800 hover:bg-[#21262d]/50">
+                                            <td className="p-4 text-gray-500 font-mono">{user.id}</td>
                                             <td className="p-4">
-                                                <div className="font-bold text-gray-800">{user.name}</div>
-                                                <div className="text-xs text-gray-400">@{user.account}</div>
+                                                <div className="font-bold text-white">{user.name}</div>
+                                                <div className="text-xs text-gray-500">@{user.account}</div>
                                             </td>
                                             <td className="p-4">
                                                 <span className={`px-2.5 py-1 rounded text-xs font-bold shift-${user.shift}`}>
@@ -284,26 +297,26 @@
                                                 </span>
                                             </td>
                                             <td className="p-4">
-                                                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                                                <span className="text-xs font-bold text-blue-400 bg-blue-950/60 border border-blue-800 px-2 py-0.5 rounded">
                                                     {user.role}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-gray-600">{user.unit}</td>
+                                            <td className="p-4 text-gray-300">{user.unit}</td>
                                             <td className="p-4">
-                                                <span className={`px-2 py-0.5 rounded-full text-xs ${user.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                <span className={`px-2 py-0.5 rounded-full text-xs ${user.active ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-red-950 text-red-400 border border-red-800'}`}>
                                                     {user.active ? '正常' : '已停用'}
                                                 </span>
                                             </td>
                                             <td className="p-4 text-right space-x-2">
                                                 <button 
                                                     onClick={() => handleResetPassword(user.name)} 
-                                                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-xs transition-colors"
+                                                    className="px-3 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-200 rounded text-xs border border-gray-700 transition-colors"
                                                 >
                                                     改密碼
                                                 </button>
                                                 <button 
                                                     onClick={() => toggleUserActive(user.id)} 
-                                                    className={`px-3 py-1 rounded text-xs transition-colors ${user.active ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
+                                                    className={`px-3 py-1 rounded text-xs transition-colors ${user.active ? 'bg-red-950/50 text-red-400 border border-red-800 hover:bg-red-900/50' : 'bg-emerald-950/50 text-emerald-400 border border-emerald-800 hover:bg-emerald-900/50'}`}
                                                 >
                                                     {user.active ? '停用' : '啟用'}
                                                 </button>
@@ -319,16 +332,16 @@
 
             return (
                 <div>
-                    {/* 上方導覽列 */}
-                    <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+                    {/* 上方深色導覽列 */}
+                    <nav className="bg-[#161b22] border-b border-gray-800 px-6 py-3 flex items-center justify-between">
                         <div className="flex items-center gap-6">
-                            <span className="font-black text-lg bg-black text-white px-2 py-1 rounded">AI 成果</span>
+                            <span className="font-black text-lg bg-emerald-500 text-black px-2 py-1 rounded">AI 成果</span>
                             <div className="flex gap-2">
                                 {["專案列表", "單位成員", "帳號管理"].map(tab => (
                                     <button 
                                         key={tab}
                                         onClick={() => setCurrentTab(tab)}
-                                        className={`px-4 py-1.5 rounded-full font-medium text-sm transition-colors ${currentTab === tab ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                                        className={`px-4 py-1.5 rounded-full font-medium text-sm transition-all ${currentTab === tab ? 'bg-emerald-500 text-black font-bold' : 'text-gray-300 hover:bg-[#21262d]'}`}
                                     >
                                         {tab}
                                     </button>
@@ -337,7 +350,7 @@
                         </div>
                     </nav>
 
-                    {/* 主內容切換 */}
+                    {/* 主內容 */}
                     {currentTab === "專案列表" && <ProjectListView />}
                     {currentTab === "單位成員" && <MemberView />}
                     {currentTab === "帳號管理" && <AccountAdminView />}
