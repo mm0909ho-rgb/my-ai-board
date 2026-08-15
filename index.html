@@ -33,9 +33,11 @@
         const { useState, useEffect } = React;
 
         // ⚠️ 請填入你的 Supabase 連線資訊 ⚠️
-        const SUPABASE_URL = "https://your-project-id.supabase.co";
-        const SUPABASE_ANON_KEY = "your-anon-key";
-        const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+        const SUPABASE_URL = "https://pbdgrwokkulcjsyoknhu.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZGdyd29ra3VsY2pzeW9rbmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MzA2NDIsImV4cCI6MjEwMjMwNjY0Mn0.uDEfM8o5B81IjjG9dw1bUqNA7BRdlriPXhJe7EZYZOQ";
+        
+        const isConfigured = SUPABASE_URL && !SUPABASE_URL.includes("your-project-id");
+        const supabase = isConfigured && window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
         function App() {
             const [currentTab, setCurrentTab] = useState("專案列表");
@@ -50,6 +52,7 @@
             // Modal 控制
             const [showProjectModal, setShowProjectModal] = useState(false);
             const [showUserModal, setShowUserModal] = useState(false);
+            const [submitting, setSubmitting] = useState(false);
 
             // 發布專案 Form (單位預設 JJ)
             const [newProject, setNewProject] = useState({
@@ -87,16 +90,42 @@
                 }
             };
 
-            // 處理本機圖片上傳轉換為 Base64 格式
+            // ⚡ 圖片自動等比例壓縮 (最高 800px，品質 70%)，防止傳輸過大失敗
             const handleImageUpload = (e) => {
                 const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        setNewProject(prev => ({ ...prev, image_url: reader.result }));
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        const maxDim = 800; // 最大寬或高
+
+                        if (width > maxDim || height > maxDim) {
+                            if (width > height) {
+                                height = Math.round((height * maxDim) / width);
+                                width = maxDim;
+                            } else {
+                                width = Math.round((width * maxDim) / height);
+                                height = maxDim;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        // 轉成壓縮後的 JPEG Base64
+                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                        setNewProject(prev => ({ ...prev, image_url: compressedBase64 }));
                     };
-                    reader.readAsDataURL(file);
-                }
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
             };
 
             // 發布專案
@@ -104,26 +133,36 @@
                 e.preventDefault();
                 if (!newProject.title) return alert("請輸入專案名稱");
 
+                setSubmitting(true);
                 const item = {
                     ...newProject,
-                    author: newProject.author || (users[0] ? users[0].name : "未指定"),
+                    author: newProject.author || (users[0] ? users[0].name : "成員 A"),
                     start_date: new Date().toLocaleDateString(),
                     launch_date: newProject.status === "上線" ? new Date().toLocaleDateString() : "-"
                 };
 
-                if (supabase) {
-                    const { data, error } = await supabase.from('projects').insert([item]).select();
-                    if (error) {
-                        alert("發布失敗：" + error.message);
-                    } else if (data) {
-                        setProjects([data[0], ...projects]);
+                try {
+                    if (supabase) {
+                        const { data, error } = await supabase.from('projects').insert([item]).select();
+                        if (error) {
+                            alert("發布失敗，請查看 Supabase 欄位是否齊全：" + error.message);
+                        } else if (data) {
+                            setProjects([data[0], ...projects]);
+                            setShowProjectModal(false);
+                            resetProjectForm();
+                            alert("🎉 發布成功！");
+                        }
+                    } else {
+                        // 本地模擬模式
+                        setProjects([{ id: Date.now(), ...item }, ...projects]);
                         setShowProjectModal(false);
                         resetProjectForm();
+                        alert("🎉 (本地模擬) 發布成功！");
                     }
-                } else {
-                    setProjects([{ id: Date.now(), ...item }, ...projects]);
-                    setShowProjectModal(false);
-                    resetProjectForm();
+                } catch (err) {
+                    alert("連線發送失敗，請確認 Supabase 網址與 Key 是否正確！\n" + err.message);
+                } finally {
+                    setSubmitting(false);
                 }
             };
 
@@ -165,7 +204,7 @@
 
             return (
                 <div className="min-h-screen">
-                    {/* 導覽列：右上角新增登出按鈕 */}
+                    {/* 導覽列 */}
                     <nav className="bg-[#161b22] border-b border-gray-800 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
                         <div className="flex items-center gap-6">
                             <span className="font-black text-lg bg-emerald-500 text-black px-2.5 py-1 rounded">AI 成果</span>
@@ -218,7 +257,12 @@
                                                     <h3 className="font-bold text-lg text-white">{item.title}</h3>
                                                     <p className="text-xs text-gray-400 mt-1">{item.dept} · 負責人：{item.author}</p>
                                                 </div>
-                                                <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${item.status}`}>● {item.status}</span>
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${item.status}`}>● {item.status}</span>
+                                                    {item.link && (
+                                                        <a href={item.link} target="_blank" className="text-xs text-blue-400 hover:underline">🌐 開啟網址</a>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-3 text-xs bg-[#0d1117] p-3 rounded-lg border border-gray-800">
@@ -327,7 +371,6 @@
                                         </div>
                                     </div>
 
-                                    {/* 單位預設 JJ + 發布者下拉選單 */}
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="text-xs text-gray-400 block mb-1">單位</label>
@@ -346,15 +389,15 @@
 
                                     <div>
                                         <label className="text-xs text-red-400 block mb-1">🚨 痛點描述 (目前現況與問題點)</label>
-                                        <textarea rows="2" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.pain_point} onChange={e => setNewProject({...newProject, pain_point: e.target.value})} placeholder="例如：手動對帳耗時 2 小時..."></textarea>
+                                        <textarea rows="2" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.pain_point} onChange={e => setNewProject({...newProject, pain_point: e.target.value})} placeholder="例如：聽錄音檔太煩..."></textarea>
                                     </div>
                                     <div>
                                         <label className="text-xs text-blue-400 block mb-1">🎯 預期目標</label>
-                                        <input type="text" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.target} onChange={e => setNewProject({...newProject, target: e.target.value})} placeholder="例如：將對帳時間縮短至 5 分鐘內" />
+                                        <input type="text" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.target} onChange={e => setNewProject({...newProject, target: e.target.value})} placeholder="例如：快速知道錄音內容" />
                                     </div>
                                     <div>
                                         <label className="text-xs text-emerald-400 block mb-1">⚡ 優化方法</label>
-                                        <textarea rows="2" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.solution} onChange={e => setNewProject({...newProject, solution: e.target.value})} placeholder="例如：利用 AI 自動擷取 PDF 帳單..."></textarea>
+                                        <textarea rows="2" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.solution} onChange={e => setNewProject({...newProject, solution: e.target.value})} placeholder="例如：利用該網址轉化文字..."></textarea>
                                     </div>
 
                                     <div>
@@ -362,18 +405,19 @@
                                         <input type="url" className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.link} onChange={e => setNewProject({...newProject, link: e.target.value})} placeholder="https://" />
                                     </div>
 
-                                    {/* 直接圖片上傳功能 */}
                                     <div>
                                         <label className="text-xs text-gray-400 block mb-1">成果附圖 (上傳圖片檔)</label>
                                         <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full p-2 rounded-lg dark-input text-xs text-gray-300 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-emerald-500 file:text-black file:font-bold" />
                                         {newProject.image_url && (
-                                            <img src={newProject.image_url} alt="預覽" className="mt-2 h-20 rounded border border-gray-700 object-cover" />
+                                            <img src={newProject.image_url} alt="預覽" className="mt-2 h-24 rounded border border-gray-700 object-cover" />
                                         )}
                                     </div>
 
                                     <div className="flex justify-end gap-2 pt-3">
                                         <button type="button" onClick={() => setShowProjectModal(false)} className="px-4 py-2 text-gray-400 text-sm hover:text-white">取消</button>
-                                        <button type="submit" className="px-5 py-2 bg-emerald-500 text-black font-bold text-sm rounded-lg hover:bg-emerald-400">確認發布</button>
+                                        <button type="submit" disabled={submitting} className="px-5 py-2 bg-emerald-500 text-black font-bold text-sm rounded-lg hover:bg-emerald-400 disabled:opacity-50">
+                                            {submitting ? '發布中...' : '確認發布'}
+                                        </button>
                                     </div>
                                 </form>
                             </div>
