@@ -18,7 +18,7 @@
         .dark-card { background-color: #161b22; border: 1px solid #30363d; }
         .dark-input { background-color: #21262d; border: 1px solid #30363d; color: #f0f6fc; }
         .dark-input:focus { border-color: #3fb950; outline: none; }
-        
+
         .tag-status-規劃 { background-color: #21262d; color: #8b949e; border: 1px solid #30363d; }
         .tag-status-開發 { background-color: #1f6beb33; color: #58a6ff; border: 1px solid #1f6beb66; }
         .tag-status-測試 { background-color: #d2992233; color: #f2cc60; border: 1px solid #d2992266; }
@@ -35,26 +35,41 @@
         // ⚠️ 請填入你的 Supabase 連線資訊 ⚠️
         const SUPABASE_URL = "https://pbdgrwokkulcjsyoknhu.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZGdyd29ra3VsY2pzeW9rbmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MzA2NDIsImV4cCI6MjEwMjMwNjY0Mn0.uDEfM8o5B81IjjG9dw1bUqNA7BRdlriPXhJe7EZYZOQ";
-        
+
         const isConfigured = SUPABASE_URL && !SUPABASE_URL.includes("your-project-id");
         const supabase = isConfigured && window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+        // 帳號格式：需同時包含英文字母與數字
+        const ACCOUNT_REGEX = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]+$/;
+        // 密碼格式：固定 6 碼數字
+        const PASSWORD_REGEX = /^\d{6}$/;
 
         function App() {
             const [currentTab, setCurrentTab] = useState("專案列表");
             const [projects, setProjects] = useState([]);
+
+            // 本地模擬模式下的預設帳號（若有接 Supabase，會被 profiles 表資料取代）
             const [users, setUsers] = useState([
-                { id: "1", name: "Admin", account: "admin", role: "ADMIN", unit: "JJ" },
-                { id: "2", name: "成員 A", account: "user_a", role: "MEMBER", unit: "JJ" }
+                { id: "1", name: "Admin", account: "admin01", password: "123456", role: "ADMIN", unit: "JJ" },
+                { id: "2", name: "成員 A", account: "usera01", password: "111111", role: "MEMBER", unit: "JJ" }
             ]);
 
-            const [currentUser, setCurrentUser] = useState({ name: "Admin", role: "ADMIN" });
+            // ===== 登入狀態 =====
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [currentUser, setCurrentUser] = useState(null);
+            const [loginForm, setLoginForm] = useState({ account: "", password: "" });
+            const [loginError, setLoginError] = useState("");
+            const [loggingIn, setLoggingIn] = useState(false);
 
             // Modal 控制
             const [showProjectModal, setShowProjectModal] = useState(false);
             const [showUserModal, setShowUserModal] = useState(false);
             const [submitting, setSubmitting] = useState(false);
 
-            // 發布專案 Form (單位預設 JJ)
+            // 目前正在編輯的專案 id（null = 新增模式）
+            const [editingProjectId, setEditingProjectId] = useState(null);
+
+            // 發布 / 編輯專案 Form (單位預設 JJ)
             const [newProject, setNewProject] = useState({
                 title: "",
                 type: "小工具",
@@ -70,7 +85,7 @@
 
             // 新增成員 Form
             const [newUser, setNewUser] = useState({
-                name: "", account: "", email: "", role: "ADMIN", unit: "JJ", shift: "早"
+                name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ", shift: "早"
             });
 
             useEffect(() => {
@@ -88,6 +103,65 @@
                         console.error("讀取失敗：", err);
                     }
                 }
+            };
+
+            // ===== 登入 =====
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoginError("");
+                const account = loginForm.account.trim();
+                const password = loginForm.password.trim();
+                if (!account || !password) {
+                    setLoginError("請輸入帳號與密碼");
+                    return;
+                }
+
+                setLoggingIn(true);
+                try {
+                    if (supabase) {
+                        const { data, error } = await supabase
+                            .from('profiles')
+                            .select('*')
+                            .eq('account', account)
+                            .eq('password', password)
+                            .maybeSingle();
+
+                        if (error || !data) {
+                            setLoginError("帳號或密碼錯誤");
+                        } else {
+                            setCurrentUser({ id: data.id, name: data.name, role: data.role, account: data.account });
+                            setIsLoggedIn(true);
+                        }
+                    } else {
+                        const matched = users.find(u => u.account === account && u.password === password);
+                        if (!matched) {
+                            setLoginError("帳號或密碼錯誤（本地模擬模式）");
+                        } else {
+                            setCurrentUser({ id: matched.id, name: matched.name, role: matched.role, account: matched.account });
+                            setIsLoggedIn(true);
+                        }
+                    }
+                } catch (err) {
+                    setLoginError("登入時發生錯誤，請稍後再試");
+                } finally {
+                    setLoggingIn(false);
+                }
+            };
+
+            const handleLogout = () => {
+                if (confirm("確定要登出系統嗎？")) {
+                    setIsLoggedIn(false);
+                    setCurrentUser(null);
+                    setLoginForm({ account: "", password: "" });
+                    setLoginError("");
+                    setCurrentTab("專案列表");
+                }
+            };
+
+            // 判斷目前登入者是否能編輯／刪除此專案：發布者本人，或 ADMIN
+            const canManageProject = (item) => {
+                if (!currentUser) return false;
+                return item.author === currentUser.name || currentUser.role === "ADMIN";
             };
 
             // ⚡ 圖片自動等比例壓縮 (最高 800px，品質 70%)，防止傳輸過大失敗
@@ -128,41 +202,121 @@
                 reader.readAsDataURL(file);
             };
 
-            // 發布專案
+            // 開啟「編輯專案」彈窗，帶入既有資料
+            const handleOpenEditProject = (item) => {
+                if (!canManageProject(item)) return;
+                setNewProject({
+                    title: item.title || "",
+                    type: item.type || "小工具",
+                    dept: item.dept || "JJ",
+                    author: item.author || "",
+                    status: item.status || "規劃",
+                    link: item.link || "",
+                    image_url: item.image_url || "",
+                    pain_point: item.pain_point || "",
+                    target: item.target || "",
+                    solution: item.solution || ""
+                });
+                setEditingProjectId(item.id);
+                setShowProjectModal(true);
+            };
+
+            // 關閉專案彈窗（新增／編輯共用），並重置狀態
+            const handleCloseProjectModal = () => {
+                setShowProjectModal(false);
+                setEditingProjectId(null);
+                resetProjectForm();
+            };
+
+            // 發布 或 更新 專案
             const handleAddProject = async (e) => {
                 e.preventDefault();
                 if (!newProject.title) return alert("請輸入專案名稱");
 
                 setSubmitting(true);
-                const item = {
-                    ...newProject,
-                    author: newProject.author || (users[0] ? users[0].name : "成員 A"),
-                    start_date: new Date().toLocaleDateString(),
-                    launch_date: newProject.status === "上線" ? new Date().toLocaleDateString() : "-"
-                };
 
                 try {
-                    if (supabase) {
-                        const { data, error } = await supabase.from('projects').insert([item]).select();
-                        if (error) {
-                            alert("發布失敗，請查看 Supabase 欄位是否齊全：" + error.message);
-                        } else if (data) {
-                            setProjects([data[0], ...projects]);
-                            setShowProjectModal(false);
-                            resetProjectForm();
-                            alert("🎉 發布成功！");
+                    if (editingProjectId) {
+                        // ===== 編輯既有專案 =====
+                        const original = projects.find(p => p.id === editingProjectId);
+                        if (original && !canManageProject(original)) {
+                            alert("您沒有權限編輯此專案（僅發布者本人或管理員可編輯）");
+                            setSubmitting(false);
+                            return;
+                        }
+
+                        const updates = {
+                            ...newProject,
+                            launch_date: newProject.status === "上線"
+                                ? (original && original.launch_date && original.launch_date !== "-" ? original.launch_date : new Date().toLocaleDateString())
+                                : "-"
+                        };
+
+                        if (supabase) {
+                            const { data, error } = await supabase.from('projects').update(updates).eq('id', editingProjectId).select();
+                            if (error) {
+                                alert("更新失敗：" + error.message);
+                            } else {
+                                setProjects(projects.map(p => p.id === editingProjectId ? { ...p, ...updates } : p));
+                                handleCloseProjectModal();
+                                alert("✅ 已更新專案");
+                            }
+                        } else {
+                            setProjects(projects.map(p => p.id === editingProjectId ? { ...p, ...updates } : p));
+                            handleCloseProjectModal();
+                            alert("✅ (本地模擬) 已更新專案");
                         }
                     } else {
-                        // 本地模擬模式
-                        setProjects([{ id: Date.now(), ...item }, ...projects]);
-                        setShowProjectModal(false);
-                        resetProjectForm();
-                        alert("🎉 (本地模擬) 發布成功！");
+                        // ===== 新增專案 =====
+                        const item = {
+                            ...newProject,
+                            author: newProject.author || currentUser.name,
+                            start_date: new Date().toLocaleDateString(),
+                            launch_date: newProject.status === "上線" ? new Date().toLocaleDateString() : "-"
+                        };
+
+                        if (supabase) {
+                            const { data, error } = await supabase.from('projects').insert([item]).select();
+                            if (error) {
+                                alert("發布失敗，請查看 Supabase 欄位是否齊全：" + error.message);
+                            } else if (data) {
+                                setProjects([data[0], ...projects]);
+                                handleCloseProjectModal();
+                                alert("🎉 發布成功！");
+                            }
+                        } else {
+                            // 本地模擬模式
+                            setProjects([{ id: Date.now(), ...item }, ...projects]);
+                            handleCloseProjectModal();
+                            alert("🎉 (本地模擬) 發布成功！");
+                        }
                     }
                 } catch (err) {
                     alert("連線發送失敗，請確認 Supabase 網址與 Key 是否正確！\n" + err.message);
                 } finally {
                     setSubmitting(false);
+                }
+            };
+
+            // 刪除專案（僅發布者本人或管理員）
+            const handleDeleteProject = async (item) => {
+                if (!canManageProject(item)) {
+                    alert("您沒有權限刪除此專案（僅發布者本人或管理員可刪除）");
+                    return;
+                }
+                if (!confirm(`確定要刪除專案「${item.title}」嗎？此動作無法復原。`)) return;
+
+                try {
+                    if (supabase) {
+                        const { error } = await supabase.from('projects').delete().eq('id', item.id);
+                        if (error) {
+                            alert("刪除失敗：" + error.message);
+                            return;
+                        }
+                    }
+                    setProjects(projects.filter(p => p.id !== item.id));
+                } catch (err) {
+                    alert("刪除失敗，請確認連線是否正常！\n" + err.message);
                 }
             };
 
@@ -173,10 +327,24 @@
                 });
             };
 
-            // 新增成員帳號
+            // 新增成員帳號（僅 ADMIN 可操作）
             const handleAddUser = async (e) => {
                 e.preventDefault();
-                if (!newUser.name || !newUser.account) return alert("請填寫完整資訊");
+                if (currentUser.role !== "ADMIN") {
+                    return alert("僅管理員可新增成員帳號");
+                }
+                if (!newUser.name || !newUser.account || !newUser.password) {
+                    return alert("請填寫完整資訊（暱稱、帳號、密碼皆為必填）");
+                }
+                if (!ACCOUNT_REGEX.test(newUser.account)) {
+                    return alert("帳號格式錯誤：需為英文字母＋數字組合（例如 user01）");
+                }
+                if (!PASSWORD_REGEX.test(newUser.password)) {
+                    return alert("密碼格式錯誤：需為 6 位數字（例如 123456）");
+                }
+                if (users.some(u => u.account === newUser.account)) {
+                    return alert("此帳號已被使用，請更換其他帳號");
+                }
 
                 const userItem = { ...newUser, status: 'active' };
 
@@ -187,20 +355,76 @@
                     } else if (data) {
                         setUsers([...users, data[0]]);
                         setShowUserModal(false);
-                        setNewUser({ name: "", account: "", email: "", role: "ADMIN", unit: "JJ", shift: "早" });
+                        setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ", shift: "早" });
+                        alert("🎉 成員帳號新增成功！");
                     }
                 } else {
                     setUsers([...users, { id: String(users.length + 1), ...userItem }]);
                     setShowUserModal(false);
-                    setNewUser({ name: "", account: "", email: "", role: "ADMIN", unit: "JJ", shift: "早" });
+                    setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ", shift: "早" });
+                    alert("🎉 (本地模擬) 成員帳號新增成功！");
                 }
             };
 
-            const handleLogout = () => {
-                if (confirm("確定要登出系統嗎？")) {
-                    alert("已成功登出");
-                }
-            };
+            // ===== 尚未登入：顯示登入畫面 =====
+            if (!isLoggedIn) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center p-4">
+                        <div className="w-full max-w-sm">
+                            <div className="text-center mb-6">
+                                <span className="font-black text-xl bg-emerald-500 text-black px-3 py-1.5 rounded inline-block">AI 成果</span>
+                                <p className="text-gray-400 text-sm mt-3">請登入以管理專案與成員</p>
+                            </div>
+                            <form onSubmit={handleLogin} className="dark-card rounded-2xl p-6 space-y-4 shadow-2xl">
+                                <div>
+                                    <label className="text-xs text-gray-400 block mb-1">帳號</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        autoFocus
+                                        className="w-full p-2.5 rounded-lg dark-input text-sm"
+                                        value={loginForm.account}
+                                        onChange={e => setLoginForm({ ...loginForm, account: e.target.value })}
+                                        placeholder="例如：user01"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-gray-400 block mb-1">密碼</label>
+                                    <input
+                                        type="password"
+                                        required
+                                        inputMode="numeric"
+                                        maxLength="6"
+                                        className="w-full p-2.5 rounded-lg dark-input text-sm"
+                                        value={loginForm.password}
+                                        onChange={e => setLoginForm({ ...loginForm, password: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                                        placeholder="6 位數字"
+                                    />
+                                </div>
+                                {loginError && (
+                                    <p className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">{loginError}</p>
+                                )}
+                                <button
+                                    type="submit"
+                                    disabled={loggingIn}
+                                    className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm rounded-lg disabled:opacity-50"
+                                >
+                                    {loggingIn ? "登入中..." : "登入"}
+                                </button>
+                            </form>
+                            {!isConfigured && (
+                                <p className="text-[11px] text-gray-500 text-center mt-4">
+                                    本地模擬模式測試帳號：admin01 / 123456（ADMIN）、usera01 / 111111（MEMBER）
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            const visibleTabs = currentUser.role === "ADMIN"
+                ? ["專案列表", "單位成員", "帳號管理"]
+                : ["專案列表", "單位成員"];
 
             return (
                 <div className="min-h-screen">
@@ -209,8 +433,8 @@
                         <div className="flex items-center gap-6">
                             <span className="font-black text-lg bg-emerald-500 text-black px-2.5 py-1 rounded">AI 成果</span>
                             <div className="flex gap-2">
-                                {["專案列表", "單位成員", "帳號管理"].map(tab => (
-                                    <button 
+                                {visibleTabs.map(tab => (
+                                    <button
                                         key={tab}
                                         onClick={() => setCurrentTab(tab)}
                                         className={`px-4 py-1.5 rounded-full font-medium text-sm transition-all ${currentTab === tab ? 'bg-emerald-500 text-black font-bold' : 'text-gray-300 hover:bg-[#21262d]'}`}
@@ -222,14 +446,14 @@
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <span className="text-xs text-gray-400">👤 {currentUser.name}</span>
-                            <button 
+                            <span className="text-xs text-gray-400">👤 {currentUser.name}（{currentUser.role}）</span>
+                            <button
                                 onClick={() => setShowProjectModal(true)}
                                 className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-4 py-2 rounded-xl text-sm shadow-lg transition-all"
                             >
                                 + 發布 AI 專案
                             </button>
-                            <button 
+                            <button
                                 onClick={handleLogout}
                                 className="bg-red-950/60 hover:bg-red-900 text-red-400 border border-red-800/80 px-3 py-2 rounded-xl text-sm font-semibold transition-all"
                             >
@@ -261,6 +485,24 @@
                                                     <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${item.status}`}>● {item.status}</span>
                                                     {item.link && (
                                                         <a href={item.link} target="_blank" className="text-xs text-blue-400 hover:underline">🌐 開啟網址</a>
+                                                    )}
+                                                    {canManageProject(item) && (
+                                                        <div className="flex items-center gap-1 pl-2 border-l border-gray-800">
+                                                            <button
+                                                                onClick={() => handleOpenEditProject(item)}
+                                                                title="編輯專案"
+                                                                className="text-xs bg-[#21262d] hover:bg-[#30363d] text-gray-300 px-2.5 py-1 rounded-md border border-gray-700"
+                                                            >
+                                                                ✏️ 編輯
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteProject(item)}
+                                                                title="刪除專案"
+                                                                className="text-xs bg-red-950/60 hover:bg-red-900 text-red-400 px-2.5 py-1 rounded-md border border-red-800/80"
+                                                            >
+                                                                🗑️ 刪除
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
@@ -300,15 +542,15 @@
                         </div>
                     )}
 
-                    {/* 帳號管理 */}
-                    {currentTab === "帳號管理" && (
+                    {/* 帳號管理（僅 ADMIN） */}
+                    {currentTab === "帳號管理" && currentUser.role === "ADMIN" && (
                         <div className="p-6 max-w-7xl mx-auto">
                             <div className="flex items-center justify-between mb-6">
                                 <div>
                                     <h1 className="text-2xl font-bold mb-1 text-white">帳號管理<span className="text-emerald-400">.</span></h1>
                                     <p className="text-gray-400 text-sm">管理成員權限與帳號啟用狀態</p>
                                 </div>
-                                <button 
+                                <button
                                     onClick={() => setShowUserModal(true)}
                                     className="px-4 py-2 bg-emerald-950 text-emerald-400 border border-emerald-700 hover:bg-emerald-900 rounded-lg text-sm font-bold flex items-center gap-2"
                                 >
@@ -320,7 +562,7 @@
                                 <table className="w-full text-left text-sm text-gray-300">
                                     <thead className="border-b border-gray-800 text-gray-400">
                                         <tr>
-                                            <th className="p-3">姓名</th>
+                                            <th className="p-3">暱稱</th>
                                             <th className="p-3">帳號</th>
                                             <th className="p-3">單位</th>
                                             <th className="p-3">權限</th>
@@ -341,11 +583,11 @@
                         </div>
                     )}
 
-                    {/* 彈窗：發布 AI 專案 */}
+                    {/* 彈窗：發布／編輯 AI 專案 */}
                     {showProjectModal && (
                         <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 overflow-y-auto">
                             <div className="dark-card p-6 rounded-2xl w-full max-w-lg shadow-2xl my-8">
-                                <h2 className="text-xl font-bold mb-4 text-white">發布 AI 專案</h2>
+                                <h2 className="text-xl font-bold mb-4 text-white">{editingProjectId ? "✏️ 編輯專案" : "發布 AI 專案"}</h2>
                                 <form onSubmit={handleAddProject} className="space-y-3">
                                     <div>
                                         <label className="text-xs text-gray-400 block mb-1">專案名稱</label>
@@ -378,12 +620,12 @@
                                         </div>
                                         <div>
                                             <label className="text-xs text-gray-400 block mb-1">發布者 / 負責人</label>
-                                            <select className="w-full p-2.5 rounded-lg dark-input text-sm" value={newProject.author} onChange={e => setNewProject({...newProject, author: e.target.value})}>
-                                                <option value="">-- 請選擇成員 --</option>
+                                            <select disabled={!!editingProjectId} className="w-full p-2.5 rounded-lg dark-input text-sm disabled:opacity-50" value={newProject.author || currentUser.name} onChange={e => setNewProject({...newProject, author: e.target.value})}>
                                                 {users.map(user => (
                                                     <option key={user.id} value={user.name}>{user.name}</option>
                                                 ))}
                                             </select>
+                                            {editingProjectId && <p className="text-[11px] text-gray-500 mt-1">編輯時發布者不可更改</p>}
                                         </div>
                                     </div>
 
@@ -414,9 +656,9 @@
                                     </div>
 
                                     <div className="flex justify-end gap-2 pt-3">
-                                        <button type="button" onClick={() => setShowProjectModal(false)} className="px-4 py-2 text-gray-400 text-sm hover:text-white">取消</button>
+                                        <button type="button" onClick={handleCloseProjectModal} className="px-4 py-2 text-gray-400 text-sm hover:text-white">取消</button>
                                         <button type="submit" disabled={submitting} className="px-5 py-2 bg-emerald-500 text-black font-bold text-sm rounded-lg hover:bg-emerald-400 disabled:opacity-50">
-                                            {submitting ? '發布中...' : '確認發布'}
+                                            {submitting ? (editingProjectId ? '更新中...' : '發布中...') : (editingProjectId ? '儲存變更' : '確認發布')}
                                         </button>
                                     </div>
                                 </form>
@@ -424,19 +666,45 @@
                         </div>
                     )}
 
-                    {/* 彈窗：新增成員帳號 */}
-                    {showUserModal && (
+                    {/* 彈窗：新增成員帳號（僅 ADMIN） */}
+                    {showUserModal && currentUser.role === "ADMIN" && (
                         <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50">
                             <div className="dark-card p-6 rounded-2xl w-full max-w-md shadow-2xl">
                                 <h2 className="text-xl font-bold mb-4 text-white">👤 新增成員帳號</h2>
                                 <form onSubmit={handleAddUser} className="space-y-3">
                                     <div>
-                                        <label className="text-xs text-gray-400 block mb-1">成員姓名 / 暱稱</label>
+                                        <label className="text-xs text-gray-400 block mb-1">成員暱稱</label>
                                         <input type="text" required className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} placeholder="例如：成員 B" />
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 block mb-1">帳號</label>
-                                        <input type="text" required className="w-full p-2.5 rounded-lg dark-input text-sm" value={newUser.account} onChange={e => setNewUser({...newUser, account: e.target.value})} placeholder="例如：user_b" />
+                                        <label className="text-xs text-gray-400 block mb-1">帳號（英文＋數字組合）</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            pattern="^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]+$"
+                                            title="帳號需同時包含英文字母與數字"
+                                            className="w-full p-2.5 rounded-lg dark-input text-sm"
+                                            value={newUser.account}
+                                            onChange={e => setNewUser({...newUser, account: e.target.value})}
+                                            placeholder="例如：user01"
+                                        />
+                                        <p className="text-[11px] text-gray-500 mt-1">需同時包含英文字母與數字，例如 user01</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-400 block mb-1">密碼（6 位數字）</label>
+                                        <input
+                                            type="password"
+                                            required
+                                            inputMode="numeric"
+                                            pattern="^\d{6}$"
+                                            maxLength="6"
+                                            title="密碼需為 6 位數字"
+                                            className="w-full p-2.5 rounded-lg dark-input text-sm"
+                                            value={newUser.password}
+                                            onChange={e => setNewUser({...newUser, password: e.target.value.replace(/\D/g, '').slice(0, 6)})}
+                                            placeholder="例如：123456"
+                                        />
+                                        <p className="text-[11px] text-gray-500 mt-1">固定 6 位數字，例如 123456</p>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
