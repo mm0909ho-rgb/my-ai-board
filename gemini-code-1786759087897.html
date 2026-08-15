@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Showcase | 个人 AI 专案展示板</title>
+  <!-- 引入 Tailwind CSS 方便快速样式控制 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 引入 FontAwesome 图标库 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 头部 Hero 区块 -->
+  <header class="py-12 px-6 text-center max-w-4xl mx-auto">
+    <div class="inline-block p-2 bg-indigo-500/10 rounded-full mb-4 border border-indigo-500/30">
+      <span class="text-indigo-400 text-sm font-semibold px-3">🚀 AI Projects Board</span>
+    </div>
+    <h1 class="text-4xl md:text-5xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500">
+      个人 AI 专案成果展示
+    </h1>
+    <p class="text-slate-400 text-lg mb-6">
+      这里汇集了我开发的各种人工智能项目，包括 LLM 应用、计算机视觉、自动化 Agent 等。
+    </p>
+    <div class="flex justify-center gap-4 text-xl text-slate-300">
+      <a href="https://github.com" target="_blank" class="hover:text-indigo-400 transition"><i class="fab font-bold fa-github"></i></a>
+      <a href="https://linkedin.com" target="_blank" class="hover:text-indigo-400 transition"><i class="fab fa-linkedin"></i></a>
+      <a href="mailto:your-email@example.com" class="hover:text-indigo-400 transition"><i class="fas fa-envelope"></i></a>
+    </div>
+  </header>
+
+  <!-- 筛选与搜索控制栏 -->
+  <main class="flex-grow max-w-6xl w-full mx-auto px-6 mb-16">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-8">
+      <!-- 标签筛选按钮 -->
+      <div id="filter-buttons" class="flex flex-wrap gap-2">
+        <button class="filter-btn active bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition" data-category="all">全部</button>
+        <button class="filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition" data-category="llm">大模型 / Agent</button>
+        <button class="filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition" data-category="cv">计算机视觉</button>
+        <button class="filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition" data-category="audio">语音 / 音频处理</button>
+      </div>
+
+      <!-- 搜索框 -->
+      <div class="relative w-full md:w-64">
+        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        <input type="text" id="search-input" placeholder="搜索专案..." class="w-full bg-slate-800/80 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+      </div>
+    </div>
+
+    <!-- 专案卡片网格 -->
+    <div id="projects-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      
+      <!-- 卡片 1 -->
+      <div class="project-card glass-card rounded-xl overflow-hidden hover:-translate-y-1 transition duration-300" data-category="llm">
+        <img src="https://picsum.photos/600/350?random=1" alt="AI Agent" class="w-full h-48 object-cover">
+        <div class="p-5">
+          <div class="flex justify-between items-start mb-2">
+            <h3 class="font-bold text-xl text-slate-100">智能文献研读 Agent</h3>
+            <span class="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded border border-indigo-500/30">LLM</span>
+          </div>
+          <p class="text-slate-400 text-sm mb-4 line-clamp-2">
+            基于 LangChain 与 OpenAI API 构建的自动化论文总结分析助手，支持 PDF 解析与对话问答。
+          </p>
+          <div class="flex flex-wrap gap-1.5 mb-5">
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Python</span>
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">LangChain</span>
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">FastAPI</span>
+          </div>
+          <div class="flex justify-between items-center pt-3 border-t border-slate-800">
+            <a href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
+              <i class="fas fa-external-link-alt"></i> 在线演示
+            </a>
+            <a href="#" target="_blank" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
+              <i class="fab fa-github"></i> GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- 卡片 2 -->
+      <div class="project-card glass-card rounded-xl overflow-hidden hover:-translate-y-1 transition duration-300" data-category="cv">
+        <img src="https://picsum.photos/600/350?random=2" alt="CV Project" class="w-full h-48 object-cover">
+        <div class="p-5">
+          <div class="flex justify-between items-start mb-2">
+            <h3 class="font-bold text-xl text-slate-100">实时目标检测系统</h3>
+            <span class="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30">CV</span>
+          </div>
+          <p class="text-slate-400 text-sm mb-4 line-clamp-2">
+            使用 YOLOv8 训练的特定场景物体识别模型，支持视频流处理与高帧率检测。
+          </p>
+          <div class="flex flex-wrap gap-1.5 mb-5">
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">PyTorch</span>
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">YOLOv8</span>
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">OpenCV</span>
+          </div>
+          <div class="flex justify-between items-center pt-3 border-t border-slate-800">
+            <a href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
+              <i class="fas fa-external-link-alt"></i> 在线演示
+            </a>
+            <a href="#" target="_blank" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
+              <i class="fab fa-github"></i> GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- 卡片 3 -->
+      <div class="project-card glass-card rounded-xl overflow-hidden hover:-translate-y-1 transition duration-300" data-category="audio">
+        <img src="https://picsum.photos/600/350?random=3" alt="Audio AI" class="w-full h-48 object-cover">
+        <div class="p-5">
+          <div class="flex justify-between items-start mb-2">
+            <h3 class="font-bold text-xl text-slate-100">AI 语音转文字与降噪</h3>
+            <span class="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded border border-purple-500/30">Audio</span>
+          </div>
+          <p class="text-slate-400 text-sm mb-4 line-clamp-2">
+            集成 Whisper 模型与 WebRTC 降噪技术的自动化会议纪要整理工具。
+          </p>
+          <div class="flex flex-wrap gap-1.5 mb-5">
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Whisper</span>
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">React</span>
+            <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Python</span>
+          </div>
+          <div class="flex justify-between items-center pt-3 border-t border-slate-800">
+            <a href="#" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1">
+              <i class="fas fa-external-link-alt"></i> 在线演示
+            </a>
+            <a href="#" target="_blank" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
+              <i class="fab fa-github"></i> GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="py-6 border-t border-slate-800 text-center text-slate-500 text-sm">
+    © 2026 AI Showcase. Built with HTML & Tailwind CSS.
+  </footer>
+
+  <!-- 分类筛选与搜索逻辑 -->
+  <script>
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    const cards = document.querySelectorAll('.project-card');
+    const searchInput = document.getElementById('search-input');
+
+    let currentCategory = 'all';
+
+    // 分类筛选
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => {
+          b.classList.remove('bg-indigo-600', 'text-white');
+          b.classList.add('bg-slate-800', 'text-slate-300');
+        });
+        btn.classList.remove('bg-slate-800', 'text-slate-300');
+        btn.classList.add('bg-indigo-600', 'text-white');
+
+        currentCategory = btn.dataset.category;
+        filterProjects();
+      });
+    });
+
+    // 搜索功能
+    searchInput.addEventListener('input', filterProjects);
+
+    function filterProjects() {
+      const searchTerm = searchInput.value.toLowerCase();
+
+      cards.forEach(card => {
+        const category = card.dataset.category;
+        const text = card.textContent.toLowerCase();
+
+        const matchesCategory = (currentCategory === 'all' || category === currentCategory);
+        const matchesSearch = text.includes(searchTerm);
+
+        if (matchesCategory && matchesSearch) {
+          card.style.display = 'block';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+  </script>
+</body>
+</html>
