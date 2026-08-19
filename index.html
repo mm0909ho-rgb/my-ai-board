@@ -35,31 +35,37 @@
             --shadow: 0 4px 18px rgba(0, 0, 0, .32);
         }
         body[data-theme="light"] {
-            --bg: #f4f5f8;              /* 冷調紙白背景 */
+            --bg: #f3f2ee;              /* 柔和暖灰白，不刺眼 */
             --card: #ffffff;
-            --panel: #f8f9fb;
-            --border: #dfe2ea;
-            --input: #eff1f6;
-            --text-1: #3a3f4c;
-            --text-2: #5f6575;
-            --text-3: #99a0af;
-            --accent: #5b6ec9;          /* 柔和靛藍 */
-            --accent-strong: #4f62bd;
+            --panel: #f4f4f1;
+            --border: #e3e2dc;
+            --input: #f0efeb;
+            --text-1: #2b2f3a;
+            --text-2: #565c6b;
+            --text-3: #8b91a1;
+            --accent: #4f62c8;
+            --accent-strong: #4354bd;
             --accent-text: #ffffff;
-            --accent-soft: rgba(91, 110, 201, .10);
+            --accent-soft: rgba(79, 98, 200, .10);
             --danger: #c76e6e;
             --danger-soft: rgba(199, 110, 110, .10);
             --danger-border: rgba(199, 110, 110, .35);
-            --link: #5b83ba;
-            --shadow: 0 4px 14px rgba(58, 63, 76, .08);
+            --link: #4f6fc0;
+            --shadow: 0 4px 16px rgba(45, 50, 66, .06);
         }
 
         body {
             background: var(--bg);
             color: var(--text-1);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 15px;
             transition: background-color .25s ease, color .25s ease;
         }
+
+        /* 頁面標題群組 */
+        .page-eyebrow { font-size: 12px; letter-spacing: .18em; font-weight: 700; color: var(--text-3); }
+        .page-title { font-size: 30px; font-weight: 800; letter-spacing: -.01em; line-height: 1.15; color: var(--text-1); }
+        .page-sub { font-size: 14px; color: var(--text-2); }
 
         .app-card  { background: var(--card);  border: 1px solid var(--border); box-shadow: var(--shadow); }
         .app-panel { background: var(--panel); border: 1px solid var(--border); }
@@ -105,6 +111,17 @@
         body[data-theme="light"] .tag-status-上線 { background: #e6f2eb; color: #3f8b64; border: 1px solid #c6e1d1; }
         body[data-theme="light"] .tag-status-下線 { background: #f6e8e8; color: #ad6161; border: 1px solid #eacccc; }
         body[data-theme="light"] .tag-status-開發測試中 { background: #e6f2f8; color: #46809f; border: 1px solid #c5e0ee; }
+
+        /* 專案卡片左側狀態色邊條 */
+        .edge-開發測試中 { border-left: 5px solid #7dbedc; }
+        .edge-上線 { border-left: 5px solid #6fc296; }
+        .edge-下線 { border-left: 5px solid #e08f8f; }
+
+        /* 類型標籤配色：工具=黃綠、專案=靛藍 */
+        body[data-theme="dark"] .tag-type-工具 { background: rgba(150, 200, 90, .16); color: #b3d97a; border: 1px solid rgba(150, 200, 90, .4); }
+        body[data-theme="dark"] .tag-type-專案 { background: rgba(143, 160, 234, .16); color: #a6b3ea; border: 1px solid rgba(143, 160, 234, .4); }
+        body[data-theme="light"] .tag-type-工具 { background: #eef6dd; color: #5c7a1e; border: 1px solid #d9e9b8; }
+        body[data-theme="light"] .tag-type-專案 { background: #e9ecfb; color: #4453b5; border: 1px solid #cdd4f2; }
 
         /* 區塊標題色（柔和版） */
         body[data-theme="dark"] .sec-pain     { color: #dd9797; } body[data-theme="light"] .sec-pain     { color: #b56a6a; }
@@ -270,6 +287,9 @@
             const [filterStatus, setFilterStatus] = useState("全部");
             const [filterAuthor, setFilterAuthor] = useState("全部");
             const [filterType, setFilterType] = useState("全部");
+
+            // 單位成員頁：班別分頁（全部 / JJ-早 / JJ-中 / JJ-晚）
+            const [memberShift, setMemberShift] = useState("全部");
 
             // 發布 / 編輯專案 Form
             const [newProject, setNewProject] = useState({
@@ -1029,7 +1049,7 @@
             const unitGroups = useMemo(() => {
                 const groups = {};
                 memberStats.forEach(m => {
-                    const unit = getBaseUnit(m.user);
+                    const unit = UNIT_OPTIONS.includes(m.user.unit) ? m.user.unit : `${getBaseUnit(m.user)}-${getShift(m.user) || '早'}`;
                     if (!groups[unit]) groups[unit] = [];
                     groups[unit].push(m);
                 });
@@ -1140,13 +1160,13 @@
                     {/* 導覽列 */}
                     <nav className="app-card border-x-0 border-t-0 rounded-none px-6 py-3 flex flex-wrap gap-y-2 items-center justify-between sticky top-0 z-10">
                         <div className="flex items-center gap-6 flex-wrap">
-                            <span className="font-black text-lg logo px-2.5 py-1 rounded">AI 成果</span>
+                            <span className="font-black text-xl logo px-3 py-1.5 rounded">AI 成果</span>
                             <div className="flex gap-2 flex-wrap">
                                 {visibleTabs.map(tab => (
                                     <button
                                         key={tab}
                                         onClick={() => { setCurrentTab(tab); setViewingProjectId(null); }}
-                                        className={`px-4 py-1.5 rounded-full font-medium text-sm transition-all ${currentTab === tab && !viewingProject ? 'navpill-active' : 'navpill'}`}
+                                        className={`px-4 py-1.5 rounded-full font-semibold text-sm transition-all ${currentTab === tab && !viewingProject ? 'navpill-active' : 'navpill'}`}
                                     >
                                         {tab}
                                     </button>
@@ -1179,8 +1199,9 @@
                         return (
                         <div className="p-6 max-w-5xl mx-auto">
                             <div className="mb-6">
-                                <h1 className="text-2xl font-bold mb-1 t1">專案詳情<span className="accent">.</span></h1>
-                                <p className="t2 text-sm">深入了解這個專案的來龍去脈與成效</p>
+                                <div className="page-eyebrow mb-1">DASHBOARD</div>
+                                <h1 className="page-title mb-1">專案詳情<span className="accent">.</span></h1>
+                                <p className="page-sub">深入了解這個專案的來龍去脈與成效</p>
                             </div>
 
                             <button
@@ -1192,8 +1213,8 @@
 
                             <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
                                 <div className="flex items-center gap-3 flex-wrap">
-                                    <h2 className="text-2xl font-black t1">{viewingProject.title}</h2>
-                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold btn-ghost">{viewingProject.type || '小工具'}</span>
+                                    <h2 className="text-3xl font-black t1">{viewingProject.title}</h2>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold tag-type-${viewingProject.type === '專案' ? '專案' : '工具'}`}>{viewingProject.type || '小工具'}</span>
                                     <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${normalizeStatus(viewingProject.status)}`}>● {normalizeStatus(viewingProject.status)}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -1377,8 +1398,9 @@
                     {currentTab === "專案列表" && !viewingProject && (
                         <div className="p-6 max-w-7xl mx-auto">
                             <div className="mb-6">
-                                <h1 className="text-2xl font-bold mb-1 t1">專案列表<span className="accent">.</span></h1>
-                                <p className="t2 text-sm">追蹤每個 AI 工具的進度、痛點與實際改善成果（點卡片可查看詳情）</p>
+                                <div className="page-eyebrow mb-1">DASHBOARD</div>
+                                <h1 className="page-title mb-1">專案列表<span className="accent">.</span></h1>
+                                <p className="page-sub">追蹤每個 AI 工具的進度、痛點與實際改善成果（點卡片可查看詳情）</p>
                             </div>
 
                             {/* 🔍 搜尋 / 篩選列 */}
@@ -1436,11 +1458,11 @@
                                         <div
                                             key={item.id}
                                             onClick={() => openProjectDetail(item)}
-                                            className="app-card rounded-xl p-5 cursor-pointer hover:opacity-95 transition-opacity"
+                                            className={`app-card rounded-xl p-5 cursor-pointer hover:opacity-95 transition-opacity edge-${normalizeStatus(item.status)}`}
                                         >
                                             <div className="flex items-center justify-between pb-3 border-b bd">
                                                 <div>
-                                                    <h3 className="font-bold text-lg t1">{item.title}</h3>
+                                                    <h3 className="font-bold text-xl t1">{item.title}</h3>
                                                     <p className="text-xs t3 mt-1">
                                                         {item.dept} · 負責人：{item.author}
                                                         {cardCollab.length > 0 ? ` · 🤝 ${cardCollab.join('、')}` : ''}
@@ -1475,11 +1497,11 @@
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 my-3 text-xs app-panel p-3 rounded-lg">
-                                                <div><span className="sec-pain font-bold block mb-1">🚨 痛點描述：</span><p className="t2 line-clamp-2">{item.pain_point || "無"}</p></div>
-                                                <div><span className="sec-target font-bold block mb-1">🎯 預期目標：</span><p className="t2 line-clamp-2">{item.target || "無"}</p></div>
-                                                <div><span className="sec-solution font-bold block mb-1">⚡ 優化方法：</span><p className="t2 line-clamp-2">{item.solution || "無"}</p></div>
-                                                <div><span className="sec-progress font-bold block mb-1">📈 目前進展：</span><p className="t2 line-clamp-2">{item.progress || "無"}</p></div>
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 my-3 text-[13px] app-panel p-3.5 rounded-lg">
+                                                <div><span className="sec-pain font-bold block mb-1">🚨 痛點描述</span><p className="t2 line-clamp-2 leading-relaxed">{item.pain_point || "無"}</p></div>
+                                                <div><span className="sec-target font-bold block mb-1">🎯 預期目標</span><p className="t2 line-clamp-2 leading-relaxed">{item.target || "無"}</p></div>
+                                                <div><span className="sec-solution font-bold block mb-1">⚡ 優化方法</span><p className="t2 line-clamp-2 leading-relaxed">{item.solution || "無"}</p></div>
+                                                <div><span className="sec-progress font-bold block mb-1">📈 目前進展</span><p className="t2 line-clamp-2 leading-relaxed">{item.progress || "無"}</p></div>
                                             </div>
 
                                             {cardImages.length > 0 && (
@@ -1508,24 +1530,42 @@
                     {currentTab === "單位成員" && (
                         <div className="p-6 max-w-7xl mx-auto">
                             <div className="mb-6">
-                                <h1 className="text-2xl font-bold mb-1 t1">單位成員<span className="accent">.</span></h1>
-                                <p className="t2 text-sm">統整每位成員發布的 AI 專案成果，依上線數排名（點專案可查看詳情）</p>
+                                <div className="page-eyebrow mb-1">DASHBOARD</div>
+                                <h1 className="page-title mb-1">單位成員<span className="accent">.</span></h1>
+                                <p className="page-sub">點選班別 → 查看成員 → 各自的 AI 成果</p>
                             </div>
 
-                            {Object.keys(unitGroups).map(unit => {
+                            {/* 班別分頁 */}
+                            <div className="flex items-center gap-2 mb-5 flex-wrap">
+                                <span className="text-xs t3 mr-1">班別</span>
+                                {["全部", ...UNIT_OPTIONS].map(s => (
+                                    <button
+                                        key={s}
+                                        onClick={() => setMemberShift(s)}
+                                        className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${memberShift === s ? 'btn-accent' : 'btn-ghost'}`}
+                                    >
+                                        {s}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {Object.keys(unitGroups)
+                                .filter(unit => memberShift === "全部" || unit === memberShift)
+                                .sort()
+                                .map(unit => {
                                 const members = unitGroups[unit];
                                 const unitCounts = {};
                                 STATUS_LIST.forEach(s => unitCounts[s] = members.reduce((sum, m) => sum + m.counts[s], 0));
                                 return (
                                     <div key={unit} className="mb-8">
-                                        <div className="app-card rounded-xl p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+                                        <div className="app-card rounded-xl p-5 mb-4 flex flex-wrap items-center justify-between gap-3">
                                             <div className="flex items-center gap-4">
-                                                <span className="text-2xl font-black t1">{unit}</span>
-                                                <span className="text-xs t3">成員成果・依上線數排名・{members.length} 位</span>
+                                                <span className="text-3xl font-black t1">{unit}</span>
+                                                <span className="text-sm t3 font-semibold">成員成果・依上線數排名・{members.length} 位</span>
                                             </div>
-                                            <div className="flex items-center gap-3 text-xs t2 flex-wrap">
+                                            <div className="flex items-center gap-2 text-sm t2 flex-wrap">
                                                 {STATUS_LIST.map(s => (
-                                                    <span key={s} className={`px-2 py-0.5 rounded-full tag-status-${s}`}>{s} {unitCounts[s]}</span>
+                                                    <span key={s} className={`px-3 py-1 rounded-full font-semibold tag-status-${s}`}>{s} {unitCounts[s]}</span>
                                                 ))}
                                             </div>
                                         </div>
@@ -1534,23 +1574,23 @@
                                             {members.map(m => (
                                                 <div key={m.user.id} className="app-card rounded-xl p-4 flex flex-col">
                                                     <div className="flex items-start justify-between pb-3 border-b bd">
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-2.5">
                                                             {getShift(m.user) && (
-                                                                <span className="w-8 h-8 rounded-lg app-panel flex items-center justify-center text-xs font-bold accent">{getShift(m.user)}</span>
+                                                                <span className="w-10 h-10 rounded-lg app-panel flex items-center justify-center text-sm font-bold accent">{getShift(m.user)}</span>
                                                             )}
                                                             <div>
-                                                                <div className="font-bold t1 flex items-center gap-1.5">
+                                                                <div className="font-black text-lg t1 flex items-center gap-1.5">
                                                                     {m.user.name}
-                                                                    <span className="text-[11px] t3 font-normal">#{m.rank}</span>
+                                                                    <span className="text-xs t3 font-normal">#{m.rank}</span>
                                                                 </div>
-                                                                <div className="text-[11px] t3 mt-0.5">
+                                                                <div className="text-xs t3 mt-0.5">
                                                                     {STATUS_LIST.map(s => `${m.counts[s]}${s}`).join('・')}
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         <div className="text-right shrink-0">
-                                                            <div className="text-2xl font-black t1 leading-none">{m.total}</div>
-                                                            <div className="text-[11px] t3">項目</div>
+                                                            <div className="text-3xl font-black accent leading-none">{m.total}</div>
+                                                            <div className="text-[11px] t3 mt-0.5">項目</div>
                                                         </div>
                                                     </div>
 
@@ -1562,16 +1602,16 @@
                                                                 <li
                                                                     key={p.id}
                                                                     onClick={() => openProjectDetail(p)}
-                                                                    className="py-2 flex items-center justify-between gap-2 cursor-pointer hover:opacity-75 px-2 -mx-2 rounded transition-opacity"
+                                                                    className="py-2.5 flex items-center justify-between gap-2 cursor-pointer hover:opacity-75 px-2 -mx-2 rounded transition-opacity"
                                                                 >
                                                                     <div className="flex items-center gap-2 min-w-0">
-                                                                        <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded btn-ghost">{p.type === '專案' ? '專案' : '工具'}</span>
+                                                                        <span className={`text-[11px] shrink-0 px-2 py-0.5 rounded font-semibold tag-type-${p.type === '專案' ? '專案' : '工具'}`}>{p.type === '專案' ? '專案' : '工具'}</span>
                                                                         {p.author !== m.user.name && (
-                                                                            <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded btn-accent-soft">協作</span>
+                                                                            <span className="text-[11px] shrink-0 px-2 py-0.5 rounded btn-accent-soft font-semibold">協作</span>
                                                                         )}
-                                                                        <span className="text-xs t1 truncate">{p.title}</span>
+                                                                        <span className="text-sm t1 font-semibold truncate">{p.title}</span>
                                                                     </div>
-                                                                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold tag-status-${normalizeStatus(p.status)}`}>{normalizeStatus(p.status)}</span>
+                                                                    <span className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold tag-status-${normalizeStatus(p.status)}`}>{normalizeStatus(p.status)}</span>
                                                                 </li>
                                                             ))}
                                                         </ul>
@@ -1590,8 +1630,9 @@
                         <div className="p-6 max-w-7xl mx-auto">
                             <div className="flex items-center justify-between mb-6">
                                 <div>
-                                    <h1 className="text-2xl font-bold mb-1 t1">帳號管理<span className="accent">.</span></h1>
-                                    <p className="t2 text-sm">管理成員權限、密碼與帳號啟用狀態</p>
+                                    <div className="page-eyebrow mb-1">DASHBOARD</div>
+                                    <h1 className="page-title mb-1">帳號管理<span className="accent">.</span></h1>
+                                    <p className="page-sub">管理成員權限、密碼與帳號啟用狀態</p>
                                 </div>
                                 <button
                                     onClick={() => setShowUserModal(true)}
