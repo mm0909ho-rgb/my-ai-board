@@ -190,6 +190,12 @@
             } catch (e) { return []; }
         };
 
+        // 產生「強制下載」網址（Supabase Storage 支援 ?download=檔名，會以附件方式下載並保留原檔名）
+        const downloadUrl = (url, name) => {
+            if (!url) return url;
+            return url + (url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(name || '');
+        };
+
         // ===== Session 讀寫（含最後活動時間，供閒置登出判斷）=====
         const readSession = () => {
             try {
@@ -1269,13 +1275,18 @@
                                 {detailFiles.length > 0 && (
                                     <div className="pt-2 border-t bd">
                                         <h3 className="font-bold text-sm t3 mb-2">📎 相關文件</h3>
-                                        <ul className="space-y-1.5">
+                                        <ul className="space-y-2">
                                             {detailFiles.map((f, i) => (
-                                                <li key={i}>
-                                                    <a href={f.url} target="_blank" className="text-sm link hover:underline break-all">📄 {f.name}</a>
+                                                <li key={i} className="flex items-center justify-between gap-3 app-panel rounded-lg px-3 py-2">
+                                                    <span className="text-sm t1 truncate">📄 {f.name}</span>
+                                                    <span className="flex items-center gap-2 shrink-0">
+                                                        <a href={f.url} target="_blank" className="text-xs link hover:underline">線上開啟</a>
+                                                        <a href={downloadUrl(f.url, f.name)} className="text-xs btn-accent-soft px-3 py-1.5 rounded-md font-bold">⬇ 下載</a>
+                                                    </span>
                                                 </li>
                                             ))}
                                         </ul>
+                                        <p className="text-[11px] t3 mt-2">txt 檔線上開啟若顯示亂碼，請改用「下載」，存到電腦後開啟即為正常內容</p>
                                     </div>
                                 )}
 
@@ -1961,6 +1972,7 @@
                                         <p className="text-[11px] t3 mt-1">
                                             {uploadingFiles ? '⏳ 文件上傳中...' : `已上傳 ${newProject.files.length} / ${MAX_FILES} 個`}
                                         </p>
+                                        <p className="text-[11px] t3 mt-1">⚠️ 文字檔（txt）請先存成 UTF-8 編碼再上傳，否則線上開啟會顯示亂碼（記事本「另存新檔」→ 編碼選 UTF-8）</p>
                                         {newProject.files.length > 0 && (
                                             <ul className="mt-2 space-y-1.5">
                                                 {newProject.files.map((f, idx) => (
