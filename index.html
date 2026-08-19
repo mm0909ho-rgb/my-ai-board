@@ -16,42 +16,42 @@
     <style>
         /* ============ 柔和雙主題色彩系統 ============ */
         :root, body[data-theme="dark"] {
-            --bg: #16181d;              /* 柔和深灰藍背景 */
-            --card: #21242c;            /* 卡片 */
-            --panel: #1b1e25;           /* 內層面板 */
-            --border: #343945;
-            --input: #2a2e38;
-            --text-1: #e8eaee;          /* 主文字 */
-            --text-2: #b4bac4;          /* 次文字 */
-            --text-3: #848b97;          /* 弱文字 */
-            --accent: #6fc296;          /* 柔和薄荷綠 */
-            --accent-strong: #5bb384;
-            --accent-text: #10231a;
-            --accent-soft: rgba(111, 194, 150, .13);
+            --bg: #171a24;              /* 深靛灰藍背景 */
+            --card: #212634;            /* 卡片 */
+            --panel: #1c202b;           /* 內層面板 */
+            --border: #363c4d;
+            --input: #2a2f3d;
+            --text-1: #e7e9f0;          /* 主文字 */
+            --text-2: #b6bcc9;          /* 次文字 */
+            --text-3: #868da0;          /* 弱文字 */
+            --accent: #8fa0ea;          /* 柔和靛藍 */
+            --accent-strong: #7c8fe2;
+            --accent-text: #171d3a;
+            --accent-soft: rgba(143, 160, 234, .14);
             --danger: #e08f8f;
             --danger-soft: rgba(224, 143, 143, .12);
             --danger-border: rgba(224, 143, 143, .38);
-            --link: #8fb4e3;
+            --link: #93b7e6;
             --shadow: 0 4px 18px rgba(0, 0, 0, .32);
         }
         body[data-theme="light"] {
-            --bg: #f6f5f1;              /* 米白紙感背景 */
+            --bg: #f4f5f8;              /* 冷調紙白背景 */
             --card: #ffffff;
-            --panel: #faf9f5;
-            --border: #e4e1d8;
-            --input: #f2f0ea;
-            --text-1: #3b3f46;
-            --text-2: #61666e;
-            --text-3: #9aa0a8;
-            --accent: #4da57c;          /* 柔和鼠尾草綠 */
-            --accent-strong: #418f6b;
+            --panel: #f8f9fb;
+            --border: #dfe2ea;
+            --input: #eff1f6;
+            --text-1: #3a3f4c;
+            --text-2: #5f6575;
+            --text-3: #99a0af;
+            --accent: #5b6ec9;          /* 柔和靛藍 */
+            --accent-strong: #4f62bd;
             --accent-text: #ffffff;
-            --accent-soft: rgba(77, 165, 124, .11);
+            --accent-soft: rgba(91, 110, 201, .10);
             --danger: #c76e6e;
             --danger-soft: rgba(199, 110, 110, .10);
             --danger-border: rgba(199, 110, 110, .35);
             --link: #5b83ba;
-            --shadow: 0 4px 14px rgba(70, 68, 58, .08);
+            --shadow: 0 4px 14px rgba(58, 63, 76, .08);
         }
 
         body {
@@ -98,11 +98,13 @@
         body[data-theme="dark"] .tag-status-測試 { background: rgba(220, 185, 115, .14); color: #dfc18a; border: 1px solid rgba(220, 185, 115, .38); }
         body[data-theme="dark"] .tag-status-上線 { background: rgba(111, 194, 150, .14); color: #85cba5; border: 1px solid rgba(111, 194, 150, .38); }
         body[data-theme="dark"] .tag-status-下線 { background: rgba(224, 143, 143, .13); color: #e2a0a0; border: 1px solid rgba(224, 143, 143, .36); }
+        body[data-theme="dark"] .tag-status-開發測試中 { background: rgba(125, 190, 220, .14); color: #8ec6dd; border: 1px solid rgba(125, 190, 220, .38); }
         body[data-theme="light"] .tag-status-規劃 { background: #edebe4; color: #7c828b; border: 1px solid #dcd8cd; }
         body[data-theme="light"] .tag-status-開發 { background: #e9f0f9; color: #5077b3; border: 1px solid #ccdcf0; }
         body[data-theme="light"] .tag-status-測試 { background: #f8f0dd; color: #9d8040; border: 1px solid #eadcb4; }
         body[data-theme="light"] .tag-status-上線 { background: #e6f2eb; color: #3f8b64; border: 1px solid #c6e1d1; }
         body[data-theme="light"] .tag-status-下線 { background: #f6e8e8; color: #ad6161; border: 1px solid #eacccc; }
+        body[data-theme="light"] .tag-status-開發測試中 { background: #e6f2f8; color: #46809f; border: 1px solid #c5e0ee; }
 
         /* 區塊標題色（柔和版） */
         body[data-theme="dark"] .sec-pain     { color: #dd9797; } body[data-theme="light"] .sec-pain     { color: #b56a6a; }
@@ -139,7 +141,17 @@
         // 閒置多久自動登出：4 小時
         const INACTIVITY_LIMIT_MS = 4 * 60 * 60 * 1000;
 
-        const STATUS_LIST = ["規劃", "開發", "測試", "上線", "下線"];
+        const STATUS_LIST = ["開發測試中", "上線", "下線"];
+        // 舊資料的 規劃/開發/測試 自動歸併顯示為「開發測試中」
+        const normalizeStatus = (s) => (["規劃", "開發", "測試"].includes(s) ? "開發測試中" : (s || "開發測試中"));
+        // 解析協作者欄位（JSON 陣列字串 → 名稱陣列）
+        const parseCollab = (val) => {
+            if (!val) return [];
+            try {
+                const arr = JSON.parse(val);
+                return Array.isArray(arr) ? arr.filter(Boolean) : [];
+            } catch (e) { return []; }
+        };
         const MAX_IMAGES = 3;
         const MAX_FILES = 3;          // 相關文件最多 3 個
         const MAX_FILE_MB = 20;       // 單一文件上限
@@ -255,8 +267,8 @@
 
             // 發布 / 編輯專案 Form
             const [newProject, setNewProject] = useState({
-                title: "", type: "小工具", dept: "JJ", author: "", status: "規劃",
-                link: "", images: [], files: [], video: "",
+                title: "", type: "小工具", dept: "JJ", author: "", status: "開發測試中",
+                link: "", images: [], files: [], video: "", collaborators: [], ai_tools: "",
                 pain_point: "", target: "", solution: "", progress: ""
             });
 
@@ -435,10 +447,11 @@
                 if (confirm("確定要登出系統嗎？")) forceLogout("");
             };
 
-            // 專案編輯／刪除權限：僅發布者「本人」可操作（管理員也不能改別人的專案）
+            // 專案編輯／刪除權限：發布者本人，或列名的共同研究成員（管理員也不能改別人的專案）
             const canManageProject = (item) => {
                 if (!currentUser) return false;
-                return item.author === currentUser.name;
+                if (item.author === currentUser.name) return true;
+                return parseCollab(item.collaborators).includes(currentUser.name);
             };
 
             // ⚡ 圖片自動等比例壓縮 (最高 800px，品質 70%)
@@ -585,11 +598,13 @@
                     type: item.type || "小工具",
                     dept: item.dept || "JJ",
                     author: item.author || "",
-                    status: item.status || "規劃",
+                    status: normalizeStatus(item.status),
                     link: item.link || "",
                     images: parseImages(item.image_url),
                     files: parseFiles(item.files),
                     video: item.video_url || "",
+                    collaborators: parseCollab(item.collaborators),
+                    ai_tools: item.ai_tools || "",
                     pain_point: item.pain_point || "",
                     target: item.target || "",
                     solution: item.solution || "",
@@ -607,12 +622,15 @@
 
             // 表單 → 資料庫欄位
             const buildProjectPayload = (form) => {
-                const { images, files, video, ...rest } = form;
+                const { images, files, video, collaborators, ...rest } = form;
+                const finalAuthor = rest.author || (currentUser ? currentUser.name : "");
+                const collab = (collaborators || []).filter(n => n && n !== finalAuthor);
                 return {
                     ...rest,
                     image_url: images && images.length > 0 ? JSON.stringify(images) : "",
                     files: files && files.length > 0 ? JSON.stringify(files) : "",
-                    video_url: video || ""
+                    video_url: video || "",
+                    collaborators: collab.length > 0 ? JSON.stringify(collab) : ""
                 };
             };
 
@@ -645,16 +663,16 @@
                                 alert("更新失敗：" + error.message + "\n\n（若錯誤為找不到 files / video_url / progress 欄位，請先到 Supabase 為 projects 表補上欄位）");
                             } else {
                                 setProjects(projects.map(p => p.id === editingProjectId ? { ...p, ...updates } : p));
-                                if (original && original.status !== newProject.status) {
-                                    insertComment(editingProjectId, `狀態由「${original.status}」變更為「${newProject.status}」`, 'system').catch(() => {});
+                                if (original && normalizeStatus(original.status) !== newProject.status) {
+                                    insertComment(editingProjectId, `狀態由「${normalizeStatus(original.status)}」變更為「${newProject.status}」`, 'system').catch(() => {});
                                 }
                                 handleCloseProjectModal();
                                 alert("✅ 已更新專案");
                             }
                         } else {
                             setProjects(projects.map(p => p.id === editingProjectId ? { ...p, ...updates } : p));
-                            if (original && original.status !== newProject.status) {
-                                insertComment(editingProjectId, `狀態由「${original.status}」變更為「${newProject.status}」`, 'system').catch(() => {});
+                            if (original && normalizeStatus(original.status) !== newProject.status) {
+                                insertComment(editingProjectId, `狀態由「${normalizeStatus(original.status)}」變更為「${newProject.status}」`, 'system').catch(() => {});
                             }
                             handleCloseProjectModal();
                             alert("✅ (本地模擬) 已更新專案");
@@ -727,10 +745,37 @@
                 }
             };
 
+            // 依成員名稱取得其所屬單位（找不到則回傳第一個選項）
+            const unitOfMember = (name) => {
+                const u = users.find(x => x.name === name);
+                return u && UNIT_OPTIONS.includes(u.unit) ? u.unit : UNIT_OPTIONS[0];
+            };
+
+            // 快速切換專案狀態（詳情頁一鍵操作，僅本人；會自動寫入系統紀錄）
+            const handleQuickStatusChange = async (item, newStatus) => {
+                if (!canManageProject(item) || normalizeStatus(item.status) === newStatus) return;
+                const updates = {
+                    status: newStatus,
+                    launch_date: newStatus === "上線"
+                        ? (item.launch_date && item.launch_date !== "-" ? item.launch_date : new Date().toLocaleDateString())
+                        : "-"
+                };
+                try {
+                    if (supabase) {
+                        const { error } = await supabase.from('projects').update(updates).eq('id', item.id);
+                        if (error) { alert("狀態更新失敗：" + error.message); return; }
+                    }
+                    setProjects(prev => prev.map(p => p.id === item.id ? { ...p, ...updates } : p));
+                    insertComment(item.id, `狀態由「${normalizeStatus(item.status)}」變更為「${newStatus}」`, 'system').catch(() => {});
+                } catch (err) {
+                    alert("狀態更新失敗：" + err.message);
+                }
+            };
+
             const resetProjectForm = () => {
                 setNewProject({
-                    title: "", type: "小工具", dept: "JJ", author: "", status: "規劃",
-                    link: "", images: [], files: [], video: "",
+                    title: "", type: "小工具", dept: "JJ", author: "", status: "開發測試中",
+                    link: "", images: [], files: [], video: "", collaborators: [], ai_tools: "",
                     pain_point: "", target: "", solution: "", progress: ""
                 });
             };
@@ -948,7 +993,7 @@
             const filteredProjects = useMemo(() => {
                 const kw = searchText.trim().toLowerCase();
                 return projects.filter(p => {
-                    if (filterStatus !== "全部" && p.status !== filterStatus) return false;
+                    if (filterStatus !== "全部" && normalizeStatus(p.status) !== filterStatus) return false;
                     if (filterAuthor !== "全部" && p.author !== filterAuthor) return false;
                     if (filterType !== "全部" && p.type !== filterType) return false;
                     if (kw) {
@@ -966,9 +1011,10 @@
             // ===== 單位成員統計 =====
             const memberStats = useMemo(() => {
                 const list = users.map(u => {
-                    const ps = projects.filter(p => p.author === u.name);
+                    // 含本人發布 + 列名協作的專案
+                    const ps = projects.filter(p => p.author === u.name || parseCollab(p.collaborators).includes(u.name));
                     const counts = {};
-                    STATUS_LIST.forEach(s => counts[s] = ps.filter(p => p.status === s).length);
+                    STATUS_LIST.forEach(s => counts[s] = ps.filter(p => normalizeStatus(p.status) === s).length);
                     return { user: u, projects: ps, counts, total: ps.length };
                 }).sort((a, b) => (b.counts["上線"] - a.counts["上線"]) || (b.total - a.total));
                 return list.map((m, i) => ({ ...m, rank: i + 1 }));
@@ -1106,7 +1152,7 @@
                             <ThemeToggle />
                             <span className="text-xs t2">👤 {currentUser.name}（{currentUser.role}）</span>
                             <button
-                                onClick={() => setShowProjectModal(true)}
+                                onClick={() => { setNewProject(prev => ({ ...prev, dept: unitOfMember(currentUser.name) })); setShowProjectModal(true); }}
                                 className="btn-accent font-bold px-4 py-2 rounded-xl text-sm transition-all"
                             >
                                 + 發布 AI 專案
@@ -1142,7 +1188,7 @@
                                 <div className="flex items-center gap-3 flex-wrap">
                                     <h2 className="text-2xl font-black t1">{viewingProject.title}</h2>
                                     <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold btn-ghost">{viewingProject.type || '小工具'}</span>
-                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${viewingProject.status}`}>● {viewingProject.status}</span>
+                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${normalizeStatus(viewingProject.status)}`}>● {normalizeStatus(viewingProject.status)}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {viewingProject.link && (
@@ -1157,11 +1203,27 @@
                                 </div>
                             </div>
 
-                            <p className="text-sm t2 mb-6">
+                            <p className="text-sm t2 mb-3">
                                 負責人 {viewingProject.dept || 'JJ'}・{viewingProject.author}
+                                {parseCollab(viewingProject.collaborators).length > 0 && <span> ・ 🤝 共同研究：{parseCollab(viewingProject.collaborators).join('、')}</span>}
                                 {viewingProject.start_date && <span> ・ 啟動於 {viewingProject.start_date}</span>}
                                 {viewingProject.launch_date && viewingProject.launch_date !== "-" && <span> ・ 上線於 {viewingProject.launch_date}</span>}
                             </p>
+
+                            {canManageProject(viewingProject) && (
+                                <div className="flex items-center gap-1.5 mb-5 flex-wrap">
+                                    <span className="text-xs t3 mr-1">快速切換狀態：</span>
+                                    {STATUS_LIST.map(s => (
+                                        <button
+                                            key={s}
+                                            onClick={() => handleQuickStatusChange(viewingProject, s)}
+                                            className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${normalizeStatus(viewingProject.status) === s ? 'btn-accent' : `tag-status-${s} opacity-60 hover:opacity-100`}`}
+                                        >
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
 
                             <div className="app-card rounded-2xl p-6 space-y-6">
                                 <div className="flex gap-4">
@@ -1192,6 +1254,17 @@
                                         <p className="text-sm t1 whitespace-pre-wrap leading-relaxed">{viewingProject.progress || "無"}</p>
                                     </div>
                                 </div>
+
+                                {viewingProject.ai_tools && (
+                                    <div className="pt-2 border-t bd">
+                                        <h3 className="font-bold text-sm t3 mb-2">🤖 使用的 AI 工具</h3>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {viewingProject.ai_tools.split(/[,，、]/).map(t => t.trim()).filter(Boolean).map((t, i) => (
+                                                <span key={i} className="px-2.5 py-1 rounded-full text-xs font-semibold btn-accent-soft">{t}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {detailFiles.length > 0 && (
                                     <div className="pt-2 border-t bd">
@@ -1326,7 +1399,7 @@
                                                 ? 'btn-accent'
                                                 : (s === "全部" ? 'btn-ghost' : `tag-status-${s} hover:opacity-80`)}`}
                                         >
-                                            {s}{s !== "全部" ? ` ${projects.filter(p => p.status === s).length}` : ''}
+                                            {s}{s !== "全部" ? ` ${projects.filter(p => normalizeStatus(p.status) === s).length}` : ''}
                                         </button>
                                     ))}
                                     <span className="text-xs t3 ml-auto flex items-center gap-2">
@@ -1347,6 +1420,7 @@
                                     {filteredProjects.map(item => {
                                         const cardImages = parseImages(item.image_url);
                                         const cardFiles = parseFiles(item.files);
+                                        const cardCollab = parseCollab(item.collaborators);
                                         return (
                                         <div
                                             key={item.id}
@@ -1357,13 +1431,15 @@
                                                 <div>
                                                     <h3 className="font-bold text-lg t1">{item.title}</h3>
                                                     <p className="text-xs t3 mt-1">
-                                                        {item.dept} · 負責人：{item.author} · 💬 {comments.filter(c => c.project_id === item.id).length}
+                                                        {item.dept} · 負責人：{item.author}
+                                                        {cardCollab.length > 0 ? ` · 🤝 ${cardCollab.join('、')}` : ''}
+                                                        {' · 💬 '}{comments.filter(c => c.project_id === item.id).length}
                                                         {cardFiles.length > 0 ? ` · 📎 ${cardFiles.length}` : ''}
                                                         {item.video_url ? ' · 🎬' : ''}
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
-                                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${item.status}`}>● {item.status}</span>
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold tag-status-${normalizeStatus(item.status)}`}>● {normalizeStatus(item.status)}</span>
                                                     {item.link && (
                                                         <a href={item.link} target="_blank" className="text-xs link hover:underline">🌐 開啟網址</a>
                                                     )}
@@ -1479,9 +1555,12 @@
                                                                 >
                                                                     <div className="flex items-center gap-2 min-w-0">
                                                                         <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded btn-ghost">{p.type === '專案' ? '專案' : '工具'}</span>
+                                                                        {p.author !== m.user.name && (
+                                                                            <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded btn-accent-soft">協作</span>
+                                                                        )}
                                                                         <span className="text-xs t1 truncate">{p.title}</span>
                                                                     </div>
-                                                                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold tag-status-${p.status}`}>{p.status}</span>
+                                                                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold tag-status-${normalizeStatus(p.status)}`}>{normalizeStatus(p.status)}</span>
                                                                 </li>
                                                             ))}
                                                         </ul>
@@ -1589,7 +1668,7 @@
 
                     {/* ===== 彈窗：編輯成員帳號 ===== */}
                     {editUserTarget && currentUser.role === "ADMIN" && (
-                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                        <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 z-50 overflow-y-auto">
                             <div className="app-card p-6 rounded-2xl w-full max-w-md my-8">
                                 <div className="flex items-center justify-between mb-4">
                                     <h2 className="text-xl font-bold t1">✏️ 編輯帳號</h2>
@@ -1696,7 +1775,7 @@
 
                     {/* ===== 彈窗：發布／編輯 AI 專案 ===== */}
                     {showProjectModal && (
-                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                        <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 z-50 overflow-y-auto">
                             <div className="app-card p-6 rounded-2xl w-full max-w-lg my-8">
                                 <h2 className="text-xl font-bold mb-4 t1">{editingProjectId ? "✏️ 編輯專案" : "發布 AI 專案"}</h2>
                                 <form onSubmit={handleAddProject} className="space-y-3">
@@ -1704,40 +1783,115 @@
                                         <label className="text-xs t3 block mb-1">專案名稱</label>
                                         <input type="text" required className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.title} onChange={e => setNewProject({...newProject, title: e.target.value})} placeholder="例如：客服文字自動發信工具" />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="text-xs t3 block mb-1">類型</label>
-                                            <select className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.type} onChange={e => setNewProject({...newProject, type: e.target.value})}>
-                                                <option value="小工具">小工具</option>
-                                                <option value="專案">專案</option>
-                                            </select>
+                                    <div>
+                                        <label className="text-xs t3 block mb-1">類型</label>
+                                        <div className="flex gap-1.5">
+                                            {["小工具", "專案"].map(t => (
+                                                <button
+                                                    key={t}
+                                                    type="button"
+                                                    onClick={() => setNewProject({...newProject, type: t})}
+                                                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${newProject.type === t ? 'btn-accent' : 'btn-ghost'}`}
+                                                >
+                                                    {t}
+                                                </button>
+                                            ))}
                                         </div>
-                                        <div>
-                                            <label className="text-xs t3 block mb-1">狀態</label>
-                                            <select className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.status} onChange={e => setNewProject({...newProject, status: e.target.value})}>
-                                                <option value="規劃">規劃</option>
-                                                <option value="開發">開發</option>
-                                                <option value="測試">測試</option>
-                                                <option value="上線">上線</option>
-                                                <option value="下線">下線</option>
-                                            </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs t3 block mb-1">狀態（點一下切換）</label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {STATUS_LIST.map(s => (
+                                                <button
+                                                    key={s}
+                                                    type="button"
+                                                    onClick={() => setNewProject({...newProject, status: s})}
+                                                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${newProject.status === s ? 'btn-accent' : `tag-status-${s} opacity-60 hover:opacity-100`}`}
+                                                >
+                                                    {s}
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="text-xs t3 block mb-1">單位</label>
-                                            <input type="text" className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.dept} onChange={e => setNewProject({...newProject, dept: e.target.value})} />
+                                            <select className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.dept} onChange={e => setNewProject({...newProject, dept: e.target.value})}>
+                                                {!UNIT_OPTIONS.includes(newProject.dept) && newProject.dept ? <option value={newProject.dept}>{newProject.dept}</option> : null}
+                                                {UNIT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                            </select>
                                         </div>
                                         <div>
                                             <label className="text-xs t3 block mb-1">發布者 / 負責人</label>
-                                            <select disabled={!!editingProjectId} className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.author || currentUser.name} onChange={e => setNewProject({...newProject, author: e.target.value})}>
+                                            <select
+                                                disabled={!!editingProjectId}
+                                                className="w-full p-2.5 rounded-lg app-input text-sm"
+                                                value={newProject.author || currentUser.name}
+                                                onChange={e => {
+                                                    const name = e.target.value;
+                                                    setNewProject(prev => ({
+                                                        ...prev,
+                                                        author: name,
+                                                        dept: unitOfMember(name),
+                                                        collaborators: prev.collaborators.filter(n => n !== name)
+                                                    }));
+                                                }}
+                                            >
                                                 {users.map(user => (
                                                     <option key={user.id} value={user.name}>{user.name}</option>
                                                 ))}
                                             </select>
                                             {editingProjectId && <p className="text-[11px] t3 mt-1">編輯時發布者不可更改</p>}
                                         </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs t3 block mb-1">🤝 共同研究成員（下拉新增，點 ✕ 移除；協作者也能編輯此專案）</label>
+                                        <select
+                                            className="w-full p-2.5 rounded-lg app-input text-sm"
+                                            value=""
+                                            onChange={e => {
+                                                const name = e.target.value;
+                                                if (!name) return;
+                                                setNewProject(prev => prev.collaborators.includes(name)
+                                                    ? prev
+                                                    : ({ ...prev, collaborators: [...prev.collaborators, name] }));
+                                            }}
+                                        >
+                                            <option value="">＋ 選擇要加入的成員...</option>
+                                            {users
+                                                .filter(u => u.name !== (newProject.author || currentUser.name) && !newProject.collaborators.includes(u.name))
+                                                .map(u => <option key={u.id} value={u.name}>{u.name}（{u.unit || 'JJ'}）</option>)}
+                                        </select>
+                                        {newProject.collaborators.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                {newProject.collaborators.map(name => (
+                                                    <span key={name} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold btn-accent-soft">
+                                                        {name}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setNewProject(prev => ({ ...prev, collaborators: prev.collaborators.filter(n => n !== name) }))}
+                                                            className="hover:opacity-60"
+                                                            title="移除"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs t3 block mb-1">🤖 使用的 AI 工具（以逗號分隔）</label>
+                                        <input
+                                            type="text"
+                                            className="w-full p-2.5 rounded-lg app-input text-sm"
+                                            value={newProject.ai_tools}
+                                            onChange={e => setNewProject({...newProject, ai_tools: e.target.value})}
+                                            placeholder="例如：Claude, ChatGPT, Gemini"
+                                        />
                                     </div>
 
                                     <div>
