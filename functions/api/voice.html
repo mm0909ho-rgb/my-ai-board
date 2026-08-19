@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🧠 极速语音转文字工具</title>
+  
+  <!-- 引入 ONNX Runtime 与 Silero VAD Web 离线切片库 -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.18/dist/bundle.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      line-height: 1.5;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .header h1 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.8rem;
+    }
+
+    .header p {
+      color: var(--text-muted);
+      margin: 0;
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .form-group {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      font-size: 0.9rem;
+    }
+
+    select, input[type="file"] {
+      width: 100%;
+      padding: 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      box-sizing: border-box;
+      font-size: 0.95rem;
+    }
+
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.8rem 1.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      width: 100%;
+      transition: background 0.2s;
+    }
+
+    button:hover { background: var(--primary-hover); }
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+
+    #log {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      background: #0f172a;
+      color: #38edf8;
+      padding: 1rem;
+      border-radius: 8px;
+      height: 110px;
+      overflow-y: auto;
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .action-btns {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .action-btn {
+      background: #f1f5f9;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.8rem;
+      font-size: 0.85rem;
+      border-radius: 4px;
+      width: auto;
+    }
+
+    .action-btn:hover { background: #e2e8f0; }
+
+    .segment {
+      padding: 0.8rem 0;
+      border-bottom: 1px dashed var(--border);
+    }
+
+    .segment:last-child { border-bottom: none; }
+
+    .timestamp {
+      font-size: 0.8rem;
+      color: var(--primary);
+      font-weight: 600;
+      margin-bottom: 0.2rem;
+    }
+
+    .text { font-size: 1rem; line-height: 1.6; }
+
+    .empty-tip {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 2rem 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🧠 离线切片 + 秒级语音转文字</h1>
+    <p>本地快速静音切片 ➔ 云端 Whisper 极速高精度转文字（免 API Key）</p>
+  </div>
+
+  <div class="card">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="language">主要语言：</label>
+        <select id="language">
+          <option value="zh">中文 (Chinese)</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="auto">自动识别 (Auto)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="audioFile">选择音视频文件：</label>
+        <input type="file" id="audioFile" accept="audio/*,video/*">
+      </div>
+    </div>
+
+    <button id="startBtn" onclick="processAudio()">开始转换</button>
+  </div>
+
+  <div class="card">
+    <label>执行状态：</label>
+    <div id="log">等待上传文件...</div>
+  </div>
+
+  <div class="card">
+    <div class="results-header">
+      <label style="margin:0;">转录结果：</label>
+      <div class="action-btns">
+        <button class="action-btn" onclick="copyAllText()">一键复制全文</button>
+        <button class="action-btn" onclick="downloadTxt()">导出 .txt 文本</button>
+      </div>
+    </div>
+    <div id="results">
+      <div class="empty-tip">尚未有转换结果</div>
+    </div>
+  </div>
+
+  <script>
+    let transcribedSegments = [];
+
+    function log(msg) {
+      const logDiv = document.getElementById('log');
+      logDiv.innerHTML += `<div>> ${msg}</div>`;
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    async function processAudio() {
+      const fileInput = document.getElementById('audioFile');
+      const startBtn = document.getElementById('startBtn');
+      const resultsDiv = document.getElementById('results');
+      const language = document.getElementById('language').value;
+
+      if (!fileInput.files.length) return alert('请先选择一个音频或视频文件！');
+
+      startBtn.disabled = true;
+      resultsDiv.innerHTML = '';
+      transcribedSegments = [];
+      log('正在解析音频文件...');
+
+      try {
+        const file = fileInput.files[0];
+
+        // 1. 本地重采样为 16kHz 单声道
+        log('正在进行音频重采样 (16kHz)...');
+        const audioBuffer = await decodeAudioFile(file);
+
+        // 2. 加载 Silero VAD
+        log('加载离线 Silero VAD 语音检测模型...');
+        const myvad = await vad.NonRealTimeVAD.new({
+          positiveSpeechThreshold: 0.5,
+          minSpeechFrames: 3,
+          preSpeechPadFrames: 1,
+        });
+
+        // 3. 执行语音分段
+        log('分析有声片段与剔除静音...');
+        const segments = [];
+        for await (const { audio, start, end } of myvad.run(audioBuffer.getChannelData(0), audioBuffer.sampleRate)) {
+          segments.push({ pcmData: audio, start: start / 1000, end: end / 1000 });
+        }
+
+        log(`静音切除完毕，共切出 ${segments.length} 个说话片段`);
+
+        // 4. 发送至后台 Serverless 代理转录
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i];
+          log(`[${i + 1}/${segments.length}] 正在识别 (${formatTime(seg.start)} -> ${formatTime(seg.end)})...`);
+
+          const wavBlob = float32ToWavBlob(seg.pcmData, 16000);
+          const text = await transcribeWithBackend(wavBlob, language);
+
+          transcribedSegments.push({ start: seg.start, end: seg.end, text });
+          appendResult(seg.start, seg.end, text);
+        }
+
+        log('🎉 全部转录完成！');
+
+      } catch (err) {
+        log(`❌ 发生错误: ${err.message}`);
+        console.error(err);
+      } finally {
+        startBtn.disabled = false;
+      }
+    }
+
+    async function decodeAudioFile(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const tempAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const decodedBuffer = await tempAudioCtx.decodeAudioData(arrayBuffer);
+
+      if (decodedBuffer.sampleRate === 16000 && decodedBuffer.numberOfChannels === 1) {
+        return decodedBuffer;
+      }
+
+      const offlineCtx = new OfflineAudioContext(1, decodedBuffer.duration * 16000, 16000);
+      const source = offlineCtx.createBufferSource();
+      source.buffer = decodedBuffer;
+      source.connect(offlineCtx.destination);
+      source.start();
+
+      return await offlineCtx.startRendering();
+    }
+
+    function float32ToWavBlob(pcmData, sampleRate = 16000) {
+      const buffer = new ArrayBuffer(44 + pcmData.length * 2);
+      const view = new DataView(buffer);
+
+      function writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
+        }
+      }
+
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + pcmData.length * 2, true);
+      writeString(view, 8, 'WAVE');
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(view, 36, 'data');
+      view.setUint32(40, pcmData.length * 2, true);
+
+      let offset = 44;
+      for (let i = 0; i < pcmData.length; i++, offset += 2) {
+        const s = Math.max(-1, Math.min(1, pcmData[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      }
+
+      return new Blob([buffer], { type: 'audio/wav' });
+    }
+
+    async function transcribeWithBackend(wavBlob, language) {
+      const formData = new FormData();
+      formData.append('file', wavBlob, 'segment.wav');
+      formData.append('model', 'whisper-large-v3');
+      if (language !== 'auto') {
+        formData.append('language', language);
+      }
+      formData.append('response_format', 'json');
+
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`后端代理服务错误 (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.text || '(未识别到声音)';
+    }
+
+    function appendResult(start, end, text) {
+      const resultsDiv = document.getElementById('results');
+      
+      if (resultsDiv.querySelector('.empty-tip')) {
+        resultsDiv.innerHTML = '';
+      }
+
+      const segElem = document.createElement('div');
+      segElem.className = 'segment';
+      segElem.innerHTML = `
+        <div class="timestamp">[${formatTime(start)} ➔ ${formatTime(end)}]</div>
+        <div class="text">${text}</div>
+      `;
+      resultsDiv.appendChild(segElem);
+    }
+
+    function copyAllText() {
+      if (!transcribedSegments.length) return alert('没有可复制的内容！');
+      const fullText = transcribedSegments.map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}] ${s.text}`).join('\n');
+      navigator.clipboard.writeText(fullText);
+      alert('已复制全文到剪贴板！');
+    }
+
+    function downloadTxt() {
+      if (!transcribedSegments.length) return alert('没有可导出的内容！');
+      const fullText = transcribedSegments.map(s => `[${formatTime(s.start)} - ${formatTime(s.end)}]\n${s.text}\n`).join('\n');
+      const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `语音转文字结果_${new Date().toISOString().slice(0,10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
