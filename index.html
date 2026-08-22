@@ -341,6 +341,7 @@
             const [filterStatus, setFilterStatus] = useState("全部");
             const [filterAuthor, setFilterAuthor] = useState("全部");
             const [filterType, setFilterType] = useState("全部");
+            const [filterShift, setFilterShift] = useState("全部");
 
             // 單位成員頁：班別分頁（全部 / JJ-早 / JJ-中 / JJ-晚）
             const [memberShift, setMemberShift] = useState("全部");
@@ -1108,6 +1109,11 @@
                     if (filterStatus !== "全部" && normalizeStatus(p.status) !== filterStatus) return false;
                     if (filterAuthor !== "全部" && p.author !== filterAuthor) return false;
                     if (filterType !== "全部" && p.type !== filterType) return false;
+                    if (filterShift !== "全部") {
+                        const au = users.find(u => u.name === p.author);
+                        const shiftUnit = au ? (UNIT_OPTIONS.includes(au.unit) ? au.unit : `${getBaseUnit(au)}-${getShift(au) || '早'}`) : "";
+                        if (shiftUnit !== filterShift) return false;
+                    }
                     if (kw) {
                         const hay = [p.title, p.author, p.dept, p.pain_point, p.target, p.solution, p.progress, p.ai_tools]
                             .filter(Boolean).join(" ").toLowerCase();
@@ -1125,10 +1131,10 @@
                     return (b.id > a.id ? 1 : -1); // 最新（預設）
                 });
                 return list;
-            }, [projects, comments, searchText, filterStatus, filterAuthor, filterType, sortBy, onlyMine, currentUser]);
+            }, [projects, comments, searchText, filterStatus, filterAuthor, filterType, filterShift, sortBy, onlyMine, currentUser, users]);
 
-            const hasActiveFilter = searchText.trim() !== "" || filterStatus !== "全部" || filterAuthor !== "全部" || filterType !== "全部" || onlyMine || sortBy !== "最新";
-            const clearFilters = () => { setSearchText(""); setFilterStatus("全部"); setFilterAuthor("全部"); setFilterType("全部"); setOnlyMine(false); setSortBy("最新"); };
+            const hasActiveFilter = searchText.trim() !== "" || filterStatus !== "全部" || filterAuthor !== "全部" || filterType !== "全部" || filterShift !== "全部" || onlyMine || sortBy !== "最新";
+            const clearFilters = () => { setSearchText(""); setFilterStatus("全部"); setFilterAuthor("全部"); setFilterType("全部"); setFilterShift("全部"); setOnlyMine(false); setSortBy("最新"); };
 
             // ===== 單位成員統計 =====
             const memberStats = useMemo(() => {
@@ -1743,6 +1749,10 @@
                                         <option value="全部">類型：全部</option>
                                         <option value="小工具">小工具</option>
                                         <option value="專案">專案</option>
+                                    </select>
+                                    <select className="p-2.5 rounded-lg app-input text-sm" value={filterShift} onChange={e => setFilterShift(e.target.value)}>
+                                        <option value="全部">班別：全部</option>
+                                        {UNIT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     </select>
                                     <select className="p-2.5 rounded-lg app-input text-sm" value={sortBy} onChange={e => setSortBy(e.target.value)}>
                                         <option value="最新">排序：最新</option>
