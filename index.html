@@ -356,6 +356,12 @@
             const [pwInput, setPwInput] = useState("");
             const [pwError, setPwError] = useState("");
 
+            // 自助修改自己的密碼
+            const [showMyPwModal, setShowMyPwModal] = useState(false);
+            const [myPwForm, setMyPwForm] = useState({ oldPw: "", newPw: "", confirmPw: "" });
+            const [myPwSaving, setMyPwSaving] = useState(false);
+            const [myPwError, setMyPwError] = useState("");
+
             // 發布 / 編輯專案 Form
             const [newProject, setNewProject] = useState({
                 title: "", type: "小工具", dept: "JJ", author: "", status: "開發測試中",
@@ -543,6 +549,41 @@
 
             const handleLogout = () => {
                 if (confirm("確定要登出系統嗎？")) forceLogout("");
+            };
+
+            // 自助修改自己的密碼
+            const handleChangeMyPassword = async (e) => {
+                e.preventDefault();
+                setMyPwError("");
+                const { oldPw, newPw, confirmPw } = myPwForm;
+                if (!oldPw || !newPw || !confirmPw) { setMyPwError("請完整填寫三個欄位"); return; }
+                if (!PASSWORD_REGEX.test(newPw)) { setMyPwError("新密碼需為 6 位數字"); return; }
+                if (newPw !== confirmPw) { setMyPwError("兩次輸入的新密碼不一致"); return; }
+
+                setMyPwSaving(true);
+                try {
+                    if (supabase) {
+                        // 先向資料庫確認舊密碼正確
+                        const { data, error } = await supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
+                        if (error || !data) { setMyPwError("讀取帳號失敗，請稍後再試"); setMyPwSaving(false); return; }
+                        if (!(await verifyPassword(oldPw, data.password))) { setMyPwError("目前密碼不正確"); setMyPwSaving(false); return; }
+                        const hashed = await hashPassword(newPw);
+                        const { error: upErr } = await supabase.from('profiles').update({ password: hashed }).eq('id', currentUser.id);
+                        if (upErr) { setMyPwError("更新失敗：" + upErr.message); setMyPwSaving(false); return; }
+                        setUsers(users.map(u => u.id === currentUser.id ? { ...u, password: hashed } : u));
+                    } else {
+                        const me = users.find(u => u.id === currentUser.id);
+                        if (!me || !(await verifyPassword(oldPw, me.password))) { setMyPwError("目前密碼不正確"); setMyPwSaving(false); return; }
+                        setUsers(users.map(u => u.id === currentUser.id ? { ...u, password: newPw } : u));
+                    }
+                    setShowMyPwModal(false);
+                    setMyPwForm({ oldPw: "", newPw: "", confirmPw: "" });
+                    alert("✅ 密碼已更新，下次登入請用新密碼");
+                } catch (err) {
+                    setMyPwError("發生錯誤，請稍後再試");
+                } finally {
+                    setMyPwSaving(false);
+                }
             };
 
             // 專案編輯／刪除權限：發布者本人，或列名的共同研究成員（管理員也不能改別人的專案）
@@ -879,18 +920,17 @@
                 });
             };
 
-            // 新增成員帳號（僅 ADMIN）
+            const DEFAULT_PASSWORD = "123456";
+
+            // 新增成員帳號（BOSS / ADMIN）
             const handleAddUser = async (e) => {
                 e.preventDefault();
                 if (!canAccessAccounts(currentUser)) return alert("僅主管或管理員可新增成員帳號");
-                if (!newUser.name || !newUser.account || !newUser.password) {
-                    return alert("請填寫完整資訊（暱稱、帳號、密碼皆為必填）");
+                if (!newUser.name || !newUser.account) {
+                    return alert("請填寫暱稱與帳號");
                 }
                 if (!ACCOUNT_REGEX.test(newUser.account)) {
                     return alert("帳號格式錯誤：需為英文字母＋數字組合（例如 user01）");
-                }
-                if (!PASSWORD_REGEX.test(newUser.password)) {
-                    return alert("密碼格式錯誤：需為 6 位數字（例如 123456）");
                 }
                 if (users.some(u => u.account === newUser.account)) {
                     return alert("此帳號已被使用，請更換其他帳號");
@@ -899,7 +939,7 @@
                 const shift = newUser.unit.includes('-') ? newUser.unit.split('-')[1] : '早';
 
                 if (supabase) {
-                    const hashed = await hashPassword(newUser.password);
+                    const hashed = await hashPassword(DEFAULT_PASSWORD);
                     const userItem = { ...newUser, password: hashed, shift, status: 'active' };
                     const { data, error } = await supabase.from('profiles').insert([userItem]).select();
                     if (error) {
@@ -908,14 +948,14 @@
                         setUsers([...users, data[0]]);
                         setShowUserModal(false);
                         setNewUser({ name: "", account: "", password: "", email: "", role: "MEMBER", unit: "JJ-早", shift: "早" });
-                        alert("🎉 成員帳號新增成功！");
+                        alert(`🎉 成員帳號新增成功！\n預設密碼為 ${DEFAULT_PASSWORD}，請提醒對方登入後自行修改。`);
                     }
                 } else {
-                    const userItem = { ...newUser, shift, status: 'active' };
+                    const userItem = { ...newUser, password: DEFAULT_PASSWORD, shift, status: 'active' };
                     setUsers([...users, { id: String(users.length + 1), ...userItem }]);
                     setShowUserModal(false);
                     setNewUser({ name: "", account: "", password: "", email: "", role: "MEMBER", unit: "JJ-早", shift: "早" });
-                    alert("🎉 (本地模擬) 成員帳號新增成功！");
+                    alert(`🎉 (本地模擬) 成員帳號新增成功！預設密碼 ${DEFAULT_PASSWORD}`);
                 }
             };
 
@@ -1361,7 +1401,14 @@
 
                         <div className="flex items-center gap-3 flex-wrap">
                             <ThemeToggle />
-                            <span className="text-xs t2">👤 {currentUser.name}（{roleLabel(currentUser.role)}）</span>
+                            <button
+                                onClick={() => { setShowMyPwModal(true); setMyPwForm({ oldPw: "", newPw: "", confirmPw: "" }); setMyPwError(""); }}
+                                className="btn-ghost px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5"
+                                title="點此修改我的密碼"
+                            >
+                                <span>👤 {currentUser.name}（{roleLabel(currentUser.role)}）</span>
+                                <span className="accent">🔑 改密碼</span>
+                            </button>
                             <button
                                 onClick={() => { setNewProject(prev => ({ ...prev, dept: unitOfMember(currentUser.name) })); setShowProjectModal(true); }}
                                 className="btn-accent font-bold px-4 py-2 rounded-xl text-sm transition-all"
@@ -2090,6 +2137,46 @@
                         </div>
                     )}
 
+                    {/* ===== 自助修改密碼視窗 ===== */}
+                    {showMyPwModal && (
+                        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[65]">
+                            <div className="app-card p-6 rounded-2xl w-full max-w-sm">
+                                <h2 className="text-lg font-bold t1 mb-1">🔑 修改我的密碼</h2>
+                                <p className="text-xs t3 mb-4">帳號：{currentUser.account}</p>
+                                <form onSubmit={handleChangeMyPassword} className="space-y-3">
+                                    <div>
+                                        <label className="text-xs t3 block mb-1">目前密碼</label>
+                                        <input type="password" inputMode="numeric" maxLength="6" className="w-full p-2.5 rounded-lg app-input text-sm"
+                                            value={myPwForm.oldPw}
+                                            onChange={e => { setMyPwForm({ ...myPwForm, oldPw: e.target.value.replace(/\D/g, '').slice(0, 6) }); setMyPwError(""); }}
+                                            placeholder="輸入目前的密碼" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs t3 block mb-1">新密碼（6 位數字）</label>
+                                        <input type="password" inputMode="numeric" maxLength="6" className="w-full p-2.5 rounded-lg app-input text-sm"
+                                            value={myPwForm.newPw}
+                                            onChange={e => { setMyPwForm({ ...myPwForm, newPw: e.target.value.replace(/\D/g, '').slice(0, 6) }); setMyPwError(""); }}
+                                            placeholder="例如：135790" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs t3 block mb-1">再次輸入新密碼</label>
+                                        <input type="password" inputMode="numeric" maxLength="6" className="w-full p-2.5 rounded-lg app-input text-sm"
+                                            value={myPwForm.confirmPw}
+                                            onChange={e => { setMyPwForm({ ...myPwForm, confirmPw: e.target.value.replace(/\D/g, '').slice(0, 6) }); setMyPwError(""); }}
+                                            placeholder="再輸入一次新密碼" />
+                                    </div>
+                                    {myPwError && <p className="text-xs danger">{myPwError}</p>}
+                                    <div className="flex justify-end gap-2 pt-1">
+                                        <button type="button" onClick={() => setShowMyPwModal(false)} className="px-4 py-2 t3 text-sm hover:opacity-70">取消</button>
+                                        <button type="submit" disabled={myPwSaving} className="px-5 py-2 btn-accent font-bold text-sm rounded-lg disabled:opacity-50">
+                                            {myPwSaving ? '儲存中...' : '更新密碼'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
                     {/* ===== 圖片放大燈箱 ===== */}
                     {lightboxUrl && (
                         <div
@@ -2518,20 +2605,9 @@
                                         <p className="text-[11px] t3 mt-1">需同時包含英文字母與數字，例如 user01</p>
                                     </div>
                                     <div>
-                                        <label className="text-xs t3 block mb-1">密碼（6 位數字）</label>
-                                        <input
-                                            type="password"
-                                            required
-                                            inputMode="numeric"
-                                            pattern="^\d{6}$"
-                                            maxLength="6"
-                                            title="密碼需為 6 位數字"
-                                            className="w-full p-2.5 rounded-lg app-input text-sm"
-                                            value={newUser.password}
-                                            onChange={e => setNewUser({...newUser, password: e.target.value.replace(/\D/g, '').slice(0, 6)})}
-                                            placeholder="例如：123456"
-                                        />
-                                        <p className="text-[11px] t3 mt-1">固定 6 位數字，例如 123456</p>
+                                        <label className="text-xs t3 block mb-1">預設密碼</label>
+                                        <div className="py-2.5 px-3 rounded-lg app-panel text-sm t2">123456（系統預設）</div>
+                                        <p className="text-[11px] t3 mt-1">新帳號一律使用預設密碼 123456，請提醒對方登入後點右上角自己的名字自行修改。</p>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
