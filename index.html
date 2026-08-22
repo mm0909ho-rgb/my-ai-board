@@ -180,6 +180,21 @@
             return input === stored; // 舊的明文密碼
         };
 
+        // ===== 角色（三層）=====
+        // BOSS 主管（最高）、ADMIN 管理員、MEMBER 一般成員
+        const ROLE_LABEL = { BOSS: "BOSS", ADMIN: "ADMIN", MEMBER: "MEMBER" };
+        const roleLabel = (r) => ROLE_LABEL[r] || "一般成員";
+        const isBoss = (u) => u && u.role === "BOSS";
+        const canAccessAccounts = (u) => u && (u.role === "BOSS" || u.role === "ADMIN"); // 能進帳號管理
+        // 目前登入者(me)能否管理某個目標帳號(target)
+        // 規則：主管(BOSS)可管理所有人；管理員(ADMIN)可管理 ADMIN 與 MEMBER，但不能動 BOSS
+        const canManageAccount = (me, target) => {
+            if (!me || !target) return false;
+            if (me.role === "BOSS") return true;
+            if (me.role === "ADMIN") return target.role !== "BOSS";
+            return false;
+        };
+
         // 登入狀態儲存 Key（localStorage 依「網域」各自獨立保存）
         const SESSION_KEY = "ai_dashboard_session";
         const THEME_KEY = "ai_dashboard_theme";
@@ -285,7 +300,7 @@
 
             // 本地模擬模式下的預設帳號
             const [users, setUsers] = useState([
-                { id: "1", name: "Admin", account: "admin01", password: "123456", role: "ADMIN", unit: "JJ-早", shift: "早", status: "active" },
+                { id: "1", name: "Admin", account: "admin01", password: "123456", role: "BOSS", unit: "JJ-早", shift: "早", status: "active" },
                 { id: "2", name: "成員 A", account: "usera01", password: "111111", role: "MEMBER", unit: "JJ-中", shift: "中", status: "active" }
             ]);
 
@@ -334,16 +349,22 @@
             const [sortBy, setSortBy] = useState("最新");
             const [onlyMine, setOnlyMine] = useState(false);
 
+            // 專案查看密碼：已解鎖的專案 id 清單、密碼輸入視窗
+            const [unlockedIds, setUnlockedIds] = useState([]);
+            const [pwPrompt, setPwPrompt] = useState(null); // { project }
+            const [pwInput, setPwInput] = useState("");
+            const [pwError, setPwError] = useState("");
+
             // 發布 / 編輯專案 Form
             const [newProject, setNewProject] = useState({
                 title: "", type: "小工具", dept: "JJ", author: "", status: "開發測試中",
                 link: "", images: [], files: [], video: "", collaborators: [], ai_tools: "",
-                pain_point: "", target: "", solution: "", progress: ""
+                pain_point: "", target: "", solution: "", progress: "", view_password: ""
             });
 
             // 新增成員 Form
             const [newUser, setNewUser] = useState({
-                name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ-早", shift: "早"
+                name: "", account: "", password: "", email: "", role: "MEMBER", unit: "JJ-早", shift: "早"
             });
 
             // ===== 閒置自動登出 =====
@@ -684,7 +705,8 @@
                     pain_point: item.pain_point || "",
                     target: item.target || "",
                     solution: item.solution || "",
-                    progress: item.progress || ""
+                    progress: item.progress || "",
+                    view_password: item.view_password || ""
                 });
                 setEditingProjectId(item.id);
                 setShowProjectModal(true);
@@ -852,14 +874,14 @@
                 setNewProject({
                     title: "", type: "小工具", dept: "JJ", author: "", status: "開發測試中",
                     link: "", images: [], files: [], video: "", collaborators: [], ai_tools: "",
-                    pain_point: "", target: "", solution: "", progress: ""
+                    pain_point: "", target: "", solution: "", progress: "", view_password: ""
                 });
             };
 
             // 新增成員帳號（僅 ADMIN）
             const handleAddUser = async (e) => {
                 e.preventDefault();
-                if (currentUser.role !== "ADMIN") return alert("僅管理員可新增成員帳號");
+                if (!canAccessAccounts(currentUser)) return alert("僅主管或管理員可新增成員帳號");
                 if (!newUser.name || !newUser.account || !newUser.password) {
                     return alert("請填寫完整資訊（暱稱、帳號、密碼皆為必填）");
                 }
@@ -884,21 +906,21 @@
                     } else if (data) {
                         setUsers([...users, data[0]]);
                         setShowUserModal(false);
-                        setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ-早", shift: "早" });
+                        setNewUser({ name: "", account: "", password: "", email: "", role: "MEMBER", unit: "JJ-早", shift: "早" });
                         alert("🎉 成員帳號新增成功！");
                     }
                 } else {
                     const userItem = { ...newUser, shift, status: 'active' };
                     setUsers([...users, { id: String(users.length + 1), ...userItem }]);
                     setShowUserModal(false);
-                    setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ-早", shift: "早" });
+                    setNewUser({ name: "", account: "", password: "", email: "", role: "MEMBER", unit: "JJ-早", shift: "早" });
                     alert("🎉 (本地模擬) 成員帳號新增成功！");
                 }
             };
 
             // 停用 / 啟用
             const handleToggleUserStatus = async (u) => {
-                if (currentUser.role !== "ADMIN") return alert("僅管理員可操作");
+                if (!canManageAccount(currentUser, u)) return alert("您沒有權限管理此帳號");
                 if (u.account === currentUser.account) return alert("不能停用自己的帳號");
 
                 const isDisabled = u.status === 'disabled';
@@ -923,6 +945,7 @@
 
             // 開啟編輯成員彈窗
             const handleOpenEditUser = (u) => {
+                if (!canManageAccount(currentUser, u)) return alert("您沒有權限編輯此帳號");
                 setEditUserTarget(u);
                 setEditUserForm({
                     name: u.name || "",
@@ -936,15 +959,22 @@
             const handleSaveEditUser = async (e) => {
                 e.preventDefault();
                 if (!editUserTarget) return;
-                if (currentUser.role !== "ADMIN") return alert("僅管理員可操作");
+                if (!canManageAccount(currentUser, editUserTarget)) return alert("您沒有權限編輯此帳號");
 
                 const newName = editUserForm.name.trim();
                 if (!newName) return alert("暱稱不可為空");
                 if (editUserForm.password && !PASSWORD_REGEX.test(editUserForm.password)) {
                     return alert("密碼格式錯誤：需為 6 位數字（留空則不變更）");
                 }
-                if (editUserTarget.account === currentUser.account && editUserForm.role !== "ADMIN") {
-                    return alert("不能移除自己的管理員權限");
+                // 管理員不能指派 BOSS（只有 BOSS 能指派 BOSS）
+                if (currentUser.role === "ADMIN" && editUserForm.role === "BOSS") {
+                    return alert("只有 BOSS 能指派 BOSS 權限");
+                }
+                // 主管不能把自己降級（避免系統失去唯一主管而無法管理）
+                if (isBoss(currentUser) && editUserTarget.account === currentUser.account && editUserForm.role !== "BOSS") {
+                    if (!users.some(u => u.role === "BOSS" && u.account !== currentUser.account)) {
+                        return alert("目前只有您一位主管，請先指派另一位主管，才能變更自己的角色");
+                    }
                 }
 
                 const shift = editUserForm.unit.includes('-') ? editUserForm.unit.split('-')[1] : '早';
@@ -990,7 +1020,7 @@
 
             // 刪除成員帳號
             const handleDeleteUser = async (u) => {
-                if (currentUser.role !== "ADMIN") return alert("僅管理員可操作");
+                if (!canManageAccount(currentUser, u)) return alert("您沒有權限刪除此帳號");
                 if (u.account === currentUser.account) return alert("不能刪除自己的帳號");
                 if (projects.some(p => p.author === u.name)) {
                     return alert(`「${u.name}」仍是某些專案的負責人，無法刪除。\n請先請本人處理其專案（可改用「停用」）。`);
@@ -1047,7 +1077,7 @@
 
             const canDeleteComment = (c) => {
                 if (!currentUser) return false;
-                return c.author === currentUser.name || currentUser.role === "ADMIN";
+                return c.author === currentUser.name || canAccessAccounts(currentUser);
             };
 
             const handleDeleteComment = async (c) => {
@@ -1102,7 +1132,7 @@
 
             // ===== 單位成員統計 =====
             const memberStats = useMemo(() => {
-                const list = users.map(u => {
+                const list = users.filter(u => u.role !== "BOSS").map(u => {
                     // 含本人發布 + 列名協作的專案
                     const ps = projects.filter(p => p.author === u.name || parseCollab(p.collaborators).includes(u.name));
                     const counts = {};
@@ -1126,10 +1156,41 @@
                 ? projects.find(p => p.id === viewingProjectId)
                 : null;
 
+            // 是否能免密碼查看：僅限發布者本人與共同研究成員（連 BOSS／ADMIN 也要輸入密碼）
+            const canViewWithoutPassword = (item) => {
+                if (!currentUser) return false;
+                if (item.author === currentUser.name) return true;
+                return parseCollab(item.collaborators).includes(currentUser.name);
+            };
+
             const openProjectDetail = (item) => {
+                // 有設查看密碼、且非可免密碼者、且尚未解鎖 → 先跳密碼視窗
+                if (item.view_password && !canViewWithoutPassword(item) && !unlockedIds.includes(item.id)) {
+                    setPwPrompt({ project: item });
+                    setPwInput("");
+                    setPwError("");
+                    return;
+                }
                 setViewingProjectId(item.id);
                 setCurrentTab("專案列表");
                 window.scrollTo(0, 0);
+            };
+
+            // 送出查看密碼
+            const submitViewPassword = (e) => {
+                if (e) e.preventDefault();
+                if (!pwPrompt) return;
+                if (pwInput === pwPrompt.project.view_password) {
+                    setUnlockedIds(prev => [...prev, pwPrompt.project.id]);
+                    setViewingProjectId(pwPrompt.project.id);
+                    setCurrentTab("專案列表");
+                    setPwPrompt(null);
+                    setPwInput("");
+                    setPwError("");
+                    window.scrollTo(0, 0);
+                } else {
+                    setPwError("密碼錯誤，請再試一次");
+                }
             };
 
             // 深淺色切換按鈕
@@ -1217,7 +1278,7 @@
                 );
             }
 
-            const visibleTabs = currentUser.role === "ADMIN"
+            const visibleTabs = canAccessAccounts(currentUser)
                 ? ["總覽", "專案列表", "單位成員", "帳號管理"]
                 : ["總覽", "專案列表", "單位成員"];
 
@@ -1294,7 +1355,7 @@
 
                         <div className="flex items-center gap-3 flex-wrap">
                             <ThemeToggle />
-                            <span className="text-xs t2">👤 {currentUser.name}（{currentUser.role}）</span>
+                            <span className="text-xs t2">👤 {currentUser.name}（{roleLabel(currentUser.role)}）</span>
                             <button
                                 onClick={() => { setNewProject(prev => ({ ...prev, dept: unitOfMember(currentUser.name) })); setShowProjectModal(true); }}
                                 className="btn-accent font-bold px-4 py-2 rounded-xl text-sm transition-all"
@@ -1737,7 +1798,7 @@
                                         >
                                             <div className="flex items-center justify-between pb-3 border-b bd">
                                                 <div>
-                                                    <h3 className="font-bold text-xl t1">{item.title}</h3>
+                                                    <h3 className="font-bold text-xl t1">{item.title}{item.view_password ? <span title="此專案受密碼保護" className="ml-1.5 text-sm">🔒</span> : null}</h3>
                                                     <p className="text-xs t3 mt-1">
                                                         {item.dept} · 負責人：<span className="owner-name text-sm">{item.author}</span>
                                                         {cardCollab.length > 0 ? <span> · 🤝 {cardCollab.join('、')}</span> : ''}
@@ -1916,13 +1977,13 @@
                     )}
 
                     {/* ===== 帳號管理（僅 ADMIN） ===== */}
-                    {currentTab === "帳號管理" && currentUser.role === "ADMIN" && (
+                    {currentTab === "帳號管理" && canAccessAccounts(currentUser) && (
                         <div className="p-6 max-w-7xl mx-auto">
                             <div className="flex items-center justify-between mb-6">
                                 <div>
                                     <div className="page-eyebrow mb-1">DASHBOARD</div>
                                     <h1 className="page-title mb-1">帳號管理<span className="accent">.</span></h1>
-                                    <p className="page-sub">管理成員權限、密碼與帳號啟用狀態</p>
+                                    <p className="page-sub">管理成員權限、密碼與帳號啟用狀態{currentUser.role === "ADMIN" ? "（管理員可管理一般成員）" : "（主管可管理所有人）"}</p>
                                 </div>
                                 <button
                                     onClick={() => setShowUserModal(true)}
@@ -1948,12 +2009,14 @@
                                         {users.map(u => {
                                             const disabled = u.status === 'disabled';
                                             const isSelf = u.account === currentUser.account;
+                                            const manageable = canManageAccount(currentUser, u);
+                                            const roleCls = u.role === "BOSS" ? "tag-type-專案" : (u.role === "ADMIN" ? "btn-accent-soft" : "btn-ghost");
                                             return (
                                                 <tr key={u.id} className={`border-b bd ${disabled ? 'opacity-50' : ''}`}>
                                                     <td className="p-3 font-semibold t1">{u.name}{isSelf && <span className="text-[10px] t3 ml-1">(自己)</span>}</td>
                                                     <td className="p-3">{u.account}</td>
                                                     <td className="p-3">{u.unit || 'JJ'}</td>
-                                                    <td className="p-3"><span className="text-xs btn-accent-soft px-2 py-0.5 rounded">{u.role}</span></td>
+                                                    <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded font-semibold ${roleCls}`}>{roleLabel(u.role)}</span></td>
                                                     <td className="p-3">
                                                         {disabled
                                                             ? <span className="text-xs btn-danger px-2 py-0.5 rounded">已停用</span>
@@ -1961,19 +2024,25 @@
                                                     </td>
                                                     <td className="p-3">
                                                         <div className="flex items-center justify-end gap-2">
-                                                            <button
-                                                                onClick={() => handleOpenEditUser(u)}
-                                                                className="text-xs btn-ghost px-2.5 py-1 rounded-md"
-                                                            >
-                                                                ✏️ 編輯
-                                                            </button>
-                                                            {!isSelf && (
-                                                                <button
-                                                                    onClick={() => handleToggleUserStatus(u)}
-                                                                    className={`text-xs px-2.5 py-1 rounded-md ${disabled ? 'btn-accent-soft' : 'btn-danger'}`}
-                                                                >
-                                                                    {disabled ? '✅ 啟用' : '🚫 停用'}
-                                                                </button>
+                                                            {manageable ? (
+                                                                <React.Fragment>
+                                                                    <button
+                                                                        onClick={() => handleOpenEditUser(u)}
+                                                                        className="text-xs btn-ghost px-2.5 py-1 rounded-md"
+                                                                    >
+                                                                        ✏️ 編輯
+                                                                    </button>
+                                                                    {!isSelf && (
+                                                                        <button
+                                                                            onClick={() => handleToggleUserStatus(u)}
+                                                                            className={`text-xs px-2.5 py-1 rounded-md ${disabled ? 'btn-accent-soft' : 'btn-danger'}`}
+                                                                        >
+                                                                            {disabled ? '✅ 啟用' : '🚫 停用'}
+                                                                        </button>
+                                                                    )}
+                                                                </React.Fragment>
+                                                            ) : (
+                                                                <span className="text-[11px] t3">—</span>
                                                             )}
                                                         </div>
                                                     </td>
@@ -1982,6 +2051,31 @@
                                         })}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ===== 專案查看密碼視窗 ===== */}
+                    {pwPrompt && (
+                        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[65]">
+                            <div className="app-card p-6 rounded-2xl w-full max-w-sm">
+                                <h2 className="text-lg font-bold t1 mb-1">🔒 此專案受密碼保護</h2>
+                                <p className="text-xs t3 mb-4">「{pwPrompt.project.title}」需輸入查看密碼</p>
+                                <form onSubmit={submitViewPassword} className="space-y-3">
+                                    <input
+                                        type="password"
+                                        autoFocus
+                                        className="w-full p-2.5 rounded-lg app-input text-sm"
+                                        value={pwInput}
+                                        onChange={e => { setPwInput(e.target.value); setPwError(""); }}
+                                        placeholder="請輸入查看密碼"
+                                    />
+                                    {pwError && <p className="text-xs danger">{pwError}</p>}
+                                    <div className="flex justify-end gap-2 pt-1">
+                                        <button type="button" onClick={() => { setPwPrompt(null); setPwInput(""); setPwError(""); }} className="px-4 py-2 t3 text-sm hover:opacity-70">取消</button>
+                                        <button type="submit" className="px-5 py-2 btn-accent font-bold text-sm rounded-lg">確認查看</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     )}
@@ -2009,7 +2103,7 @@
                     )}
 
                     {/* ===== 彈窗：編輯成員帳號 ===== */}
-                    {editUserTarget && currentUser.role === "ADMIN" && (
+                    {editUserTarget && canAccessAccounts(currentUser) && (
                         <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 z-50 overflow-y-auto">
                             <div className="app-card p-6 rounded-2xl w-full max-w-md my-8">
                                 <div className="flex items-center justify-between mb-4">
@@ -2033,39 +2127,55 @@
 
                                     <div>
                                         <label className="text-xs t3 block mb-1">權限</label>
-                                        <div className="grid grid-cols-2 gap-0 rounded-lg overflow-hidden border bd">
-                                            <button
-                                                type="button"
-                                                onClick={() => setEditUserForm({ ...editUserForm, role: "MEMBER" })}
-                                                className={`py-2 text-sm font-semibold transition-colors ${editUserForm.role === "MEMBER" ? 'btn-accent' : 'btn-ghost border-0 rounded-none'}`}
-                                            >
-                                                一般成員
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setEditUserForm({ ...editUserForm, role: "ADMIN" })}
-                                                className={`py-2 text-sm font-semibold transition-colors ${editUserForm.role === "ADMIN" ? 'btn-accent' : 'btn-ghost border-0 rounded-none'}`}
-                                            >
-                                                管理者
-                                            </button>
-                                        </div>
+                                        {isBoss(currentUser) ? (
+                                            <div className="grid grid-cols-3 gap-0 rounded-lg overflow-hidden border bd">
+                                                {[["MEMBER", "MEMBER"], ["ADMIN", "ADMIN"], ["BOSS", "BOSS"]].map(([val, label]) => (
+                                                    <button
+                                                        key={val}
+                                                        type="button"
+                                                        onClick={() => setEditUserForm({ ...editUserForm, role: val })}
+                                                        className={`py-2 text-sm font-semibold transition-colors ${editUserForm.role === val ? 'btn-accent' : 'btn-ghost border-0 rounded-none'}`}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <div className="grid grid-cols-2 gap-0 rounded-lg overflow-hidden border bd">
+                                                    {[["MEMBER", "MEMBER"], ["ADMIN", "ADMIN"]].map(([val, label]) => (
+                                                        <button
+                                                            key={val}
+                                                            type="button"
+                                                            onClick={() => setEditUserForm({ ...editUserForm, role: val })}
+                                                            className={`py-2 text-sm font-semibold transition-colors ${editUserForm.role === val ? 'btn-accent' : 'btn-ghost border-0 rounded-none'}`}
+                                                        >
+                                                            {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <p className="text-[11px] t3 mt-1">只有 BOSS 能指派 BOSS 權限</p>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    <div>
-                                        <label className="text-xs t3 block mb-1">所屬單位（含班別）</label>
-                                        <div className="flex gap-2">
-                                            {UNIT_OPTIONS.map(opt => (
-                                                <button
-                                                    key={opt}
-                                                    type="button"
-                                                    onClick={() => setEditUserForm({ ...editUserForm, unit: opt })}
-                                                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${editUserForm.unit === opt ? 'btn-accent' : 'btn-ghost'}`}
-                                                >
-                                                    {opt}
-                                                </button>
-                                            ))}
+                                    {editUserForm.role !== "BOSS" && (
+                                        <div>
+                                            <label className="text-xs t3 block mb-1">所屬單位（含班別）</label>
+                                            <div className="flex gap-2">
+                                                {UNIT_OPTIONS.map(opt => (
+                                                    <button
+                                                        key={opt}
+                                                        type="button"
+                                                        onClick={() => setEditUserForm({ ...editUserForm, unit: opt })}
+                                                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${editUserForm.unit === opt ? 'btn-accent' : 'btn-ghost'}`}
+                                                    >
+                                                        {opt}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
 
                                     <div>
                                         <label className="text-xs t3 block mb-1">重設密碼（留空＝不改）</label>
@@ -2258,6 +2368,18 @@
                                         <input type="url" className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.link} onChange={e => setNewProject({...newProject, link: e.target.value})} placeholder="https://" />
                                     </div>
 
+                                    <div className="app-panel rounded-lg p-3">
+                                        <label className="text-xs t2 font-bold block mb-1">🔒 查看密碼（選填，隱私專案專用）</label>
+                                        <input
+                                            type="text"
+                                            className="w-full p-2.5 rounded-lg app-input text-sm"
+                                            value={newProject.view_password}
+                                            onChange={e => setNewProject({...newProject, view_password: e.target.value})}
+                                            placeholder="留空＝公開；填寫後他人需輸入此密碼才能查看"
+                                        />
+                                        <p className="text-[11px] t3 mt-1">設定後，除了你本人與共同研究成員外，其他人（含 BOSS／ADMIN）點進此專案都需先輸入這組密碼。</p>
+                                    </div>
+
                                     {/* 成果附圖 */}
                                     <div>
                                         <label className="text-xs t3 block mb-1">📷 成果附圖（最多 {MAX_IMAGES} 張，可一次多選，點 ✕ 可刪除）</label>
@@ -2362,7 +2484,7 @@
                     )}
 
                     {/* ===== 彈窗：新增成員帳號 ===== */}
-                    {showUserModal && currentUser.role === "ADMIN" && (
+                    {showUserModal && canAccessAccounts(currentUser) && (
                         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
                             <div className="app-card p-6 rounded-2xl w-full max-w-md">
                                 <h2 className="text-xl font-bold mb-4 t1">👤 新增成員帳號</h2>
@@ -2404,17 +2526,22 @@
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="text-xs t3 block mb-1">單位（含班別）</label>
-                                            <select className="w-full p-2.5 rounded-lg app-input text-sm" value={newUser.unit} onChange={e => setNewUser({...newUser, unit: e.target.value})}>
-                                                {UNIT_OPTIONS.map(opt => (
-                                                    <option key={opt} value={opt}>{opt}</option>
-                                                ))}
-                                            </select>
+                                            {newUser.role === "BOSS" ? (
+                                                <div className="py-2.5 px-3 rounded-lg app-panel text-sm t3">BOSS 不分班別</div>
+                                            ) : (
+                                                <select className="w-full p-2.5 rounded-lg app-input text-sm" value={newUser.unit} onChange={e => setNewUser({...newUser, unit: e.target.value})}>
+                                                    {UNIT_OPTIONS.map(opt => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                </select>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="text-xs t3 block mb-1">權限角色</label>
                                             <select className="w-full p-2.5 rounded-lg app-input text-sm" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
-                                                <option value="ADMIN">ADMIN</option>
                                                 <option value="MEMBER">MEMBER</option>
+                                                <option value="ADMIN">ADMIN</option>
+                                                <option value="BOSS">BOSS</option>
                                             </select>
                                         </div>
                                     </div>
