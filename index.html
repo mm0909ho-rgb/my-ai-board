@@ -123,6 +123,14 @@
         body[data-theme="light"] .tag-type-工具 { background: #eef6dd; color: #5c7a1e; border: 1px solid #d9e9b8; }
         body[data-theme="light"] .tag-type-專案 { background: #e9ecfb; color: #4453b5; border: 1px solid #cdd4f2; }
 
+        /* 負責人名稱：醒目字體 */
+        .owner-name {
+            font-family: "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+            font-weight: 800;
+            color: var(--accent);
+            letter-spacing: .01em;
+        }
+
         /* 區塊標題色（柔和版） */
         body[data-theme="dark"] .sec-pain     { color: #dd9797; } body[data-theme="light"] .sec-pain     { color: #b56a6a; }
         body[data-theme="dark"] .sec-target   { color: #93b3e0; } body[data-theme="light"] .sec-target   { color: #5077b3; }
@@ -152,6 +160,26 @@
         // 密碼格式：固定 6 碼數字
         const PASSWORD_REGEX = /^\d{6}$/;
 
+        // ===== 密碼雜湊（SHA-256 + 固定 salt；瀏覽器內建，不需額外套件）=====
+        // 註：這比明文安全很多，但因是純前端固定 salt，並非最高等級。
+        // 若日後要最嚴謹，應改用 Supabase Auth（伺服器端 bcrypt）。
+        const PWD_SALT = "jj_ai_board::";
+        const hashPassword = async (plain) => {
+            try {
+                const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(PWD_SALT + plain));
+                return 'sha256$' + Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+            } catch (e) {
+                return plain; // 極少數不支援的環境，退回明文（不致命）
+            }
+        };
+        const isHashed = (v) => typeof v === 'string' && v.startsWith('sha256$');
+        // 比對密碼：支援明文（舊資料）與雜湊（新資料）
+        const verifyPassword = async (input, stored) => {
+            if (stored == null) return false;
+            if (isHashed(stored)) return (await hashPassword(input)) === stored;
+            return input === stored; // 舊的明文密碼
+        };
+
         // 登入狀態儲存 Key（localStorage 依「網域」各自獨立保存）
         const SESSION_KEY = "ai_dashboard_session";
         const THEME_KEY = "ai_dashboard_theme";
@@ -168,6 +196,17 @@
                 const arr = JSON.parse(val);
                 return Array.isArray(arr) ? arr.filter(Boolean) : [];
             } catch (e) { return []; }
+        };
+
+        // 把「目前進展」拆成分列：優先用換行，若整段沒換行則用日期(如 8/16、2026/8/16)當分隔
+        const splitProgress = (text) => {
+            if (!text) return [];
+            let raw = String(text).trim();
+            if (/[\r\n]/.test(raw)) {
+                return raw.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+            }
+            const parts = raw.split(/(?=(?:\d{4}\/)?\d{1,2}\/\d{1,2}[\s　])/).map(s => s.trim()).filter(Boolean);
+            return parts.length > 0 ? parts : [raw];
         };
         const MAX_IMAGES = 3;
         const MAX_FILES = 3;          // 相關文件最多 3 個
@@ -290,6 +329,10 @@
 
             // 單位成員頁：班別分頁（全部 / JJ-早 / JJ-中 / JJ-晚）
             const [memberShift, setMemberShift] = useState("全部");
+
+            // 專案列表：排序方式 + 只看我的
+            const [sortBy, setSortBy] = useState("最新");
+            const [onlyMine, setOnlyMine] = useState(false);
 
             // 發布 / 編輯專案 Form
             const [newProject, setNewProject] = useState({
@@ -436,19 +479,25 @@
                             .from('profiles')
                             .select('*')
                             .eq('account', account)
-                            .eq('password', password)
                             .maybeSingle();
 
-                        if (error || !data) {
+                        if (error || !data || !(await verifyPassword(password, data.password))) {
                             setLoginError("帳號或密碼錯誤");
                         } else if (data.status === 'disabled') {
                             setLoginError("此帳號已被停用，請聯絡管理員");
                         } else {
                             userObj = { id: data.id, name: data.name, role: data.role, account: data.account };
+                            // 自動升級：若資料庫仍是明文密碼，登入成功後轉存為雜湊
+                            if (!isHashed(data.password)) {
+                                try {
+                                    const hashed = await hashPassword(password);
+                                    await supabase.from('profiles').update({ password: hashed }).eq('id', data.id);
+                                } catch (e) { /* 升級失敗不影響登入 */ }
+                            }
                         }
                     } else {
-                        const matched = users.find(u => u.account === account && u.password === password);
-                        if (!matched) {
+                        const matched = users.find(u => u.account === account);
+                        if (!matched || !(await verifyPassword(password, matched.password))) {
                             setLoginError("帳號或密碼錯誤（本地模擬模式）");
                         } else if (matched.status === 'disabled') {
                             setLoginError("此帳號已被停用，請聯絡管理員");
@@ -460,6 +509,7 @@
                     if (userObj) {
                         setCurrentUser(userObj);
                         setIsLoggedIn(true);
+                        setCurrentTab("總覽");
                         writeSession(userObj);
                     }
                 } catch (err) {
@@ -824,9 +874,10 @@
                 }
 
                 const shift = newUser.unit.includes('-') ? newUser.unit.split('-')[1] : '早';
-                const userItem = { ...newUser, shift, status: 'active' };
 
                 if (supabase) {
+                    const hashed = await hashPassword(newUser.password);
+                    const userItem = { ...newUser, password: hashed, shift, status: 'active' };
                     const { data, error } = await supabase.from('profiles').insert([userItem]).select();
                     if (error) {
                         alert("新增失敗：" + error.message);
@@ -837,6 +888,7 @@
                         alert("🎉 成員帳號新增成功！");
                     }
                 } else {
+                    const userItem = { ...newUser, shift, status: 'active' };
                     setUsers([...users, { id: String(users.length + 1), ...userItem }]);
                     setShowUserModal(false);
                     setNewUser({ name: "", account: "", password: "", email: "", role: "ADMIN", unit: "JJ-早", shift: "早" });
@@ -897,7 +949,9 @@
 
                 const shift = editUserForm.unit.includes('-') ? editUserForm.unit.split('-')[1] : '早';
                 const updates = { name: newName, role: editUserForm.role, unit: editUserForm.unit, shift };
-                if (editUserForm.password) updates.password = editUserForm.password;
+                if (editUserForm.password) {
+                    updates.password = supabase ? await hashPassword(editUserForm.password) : editUserForm.password;
+                }
 
                 const oldName = editUserTarget.name;
                 const nameChanged = oldName !== newName;
@@ -1015,24 +1069,36 @@
                 try { return new Date(t).toLocaleString('zh-TW', { hour12: false }); } catch (e) { return String(t); }
             };
 
-            // ===== 專案搜尋 / 篩選 =====
+            // ===== 專案搜尋 / 篩選 / 排序 =====
             const filteredProjects = useMemo(() => {
                 const kw = searchText.trim().toLowerCase();
-                return projects.filter(p => {
+                const myName = currentUser ? currentUser.name : "";
+                let list = projects.filter(p => {
+                    if (onlyMine && !(p.author === myName || parseCollab(p.collaborators).includes(myName))) return false;
                     if (filterStatus !== "全部" && normalizeStatus(p.status) !== filterStatus) return false;
                     if (filterAuthor !== "全部" && p.author !== filterAuthor) return false;
                     if (filterType !== "全部" && p.type !== filterType) return false;
                     if (kw) {
-                        const hay = [p.title, p.author, p.dept, p.pain_point, p.target, p.solution, p.progress]
+                        const hay = [p.title, p.author, p.dept, p.pain_point, p.target, p.solution, p.progress, p.ai_tools]
                             .filter(Boolean).join(" ").toLowerCase();
                         if (!hay.includes(kw)) return false;
                     }
                     return true;
                 });
-            }, [projects, searchText, filterStatus, filterAuthor, filterType]);
+                const commentCount = (id) => comments.filter(c => c.project_id === id).length;
+                const statusOrder = { "開發測試中": 0, "上線": 1, "下線": 2 };
+                list = [...list].sort((a, b) => {
+                    if (sortBy === "最舊") return (a.id > b.id ? 1 : -1);
+                    if (sortBy === "最多留言") return commentCount(b.id) - commentCount(a.id);
+                    if (sortBy === "依狀態") return statusOrder[normalizeStatus(a.status)] - statusOrder[normalizeStatus(b.status)] || (b.id > a.id ? 1 : -1);
+                    if (sortBy === "名稱") return String(a.title).localeCompare(String(b.title), 'zh-Hant');
+                    return (b.id > a.id ? 1 : -1); // 最新（預設）
+                });
+                return list;
+            }, [projects, comments, searchText, filterStatus, filterAuthor, filterType, sortBy, onlyMine, currentUser]);
 
-            const hasActiveFilter = searchText.trim() !== "" || filterStatus !== "全部" || filterAuthor !== "全部" || filterType !== "全部";
-            const clearFilters = () => { setSearchText(""); setFilterStatus("全部"); setFilterAuthor("全部"); setFilterType("全部"); };
+            const hasActiveFilter = searchText.trim() !== "" || filterStatus !== "全部" || filterAuthor !== "全部" || filterType !== "全部" || onlyMine || sortBy !== "最新";
+            const clearFilters = () => { setSearchText(""); setFilterStatus("全部"); setFilterAuthor("全部"); setFilterType("全部"); setOnlyMine(false); setSortBy("最新"); };
 
             // ===== 單位成員統計 =====
             const memberStats = useMemo(() => {
@@ -1152,8 +1218,60 @@
             }
 
             const visibleTabs = currentUser.role === "ADMIN"
-                ? ["專案列表", "單位成員", "帳號管理"]
-                : ["專案列表", "單位成員"];
+                ? ["總覽", "專案列表", "單位成員", "帳號管理"]
+                : ["總覽", "專案列表", "單位成員"];
+
+            // ===== 總覽統計 =====
+            const overview = (() => {
+                const total = projects.length;
+                const byStatus = {};
+                STATUS_LIST.forEach(s => byStatus[s] = projects.filter(p => normalizeStatus(p.status) === s).length);
+                const byType = {
+                    工具: projects.filter(p => p.type !== '專案').length,
+                    專案: projects.filter(p => p.type === '專案').length,
+                };
+                const online = byStatus["上線"] || 0;
+                const onlineRate = total > 0 ? Math.round(online / total * 100) : 0;
+                // 各班別統計
+                const byShift = {};
+                UNIT_OPTIONS.forEach(u => {
+                    const ps = projects.filter(p => {
+                        const author = users.find(x => x.name === p.author);
+                        return author && (UNIT_OPTIONS.includes(author.unit) ? author.unit : `${getBaseUnit(author)}-${getShift(author) || '早'}`) === u;
+                    });
+                    byShift[u] = { total: ps.length, online: ps.filter(p => normalizeStatus(p.status) === '上線').length };
+                });
+                // AI 工具使用次數排行
+                const toolCount = {};
+                projects.forEach(p => {
+                    (p.ai_tools || "").split(/[,，、]/).map(t => t.trim()).filter(Boolean).forEach(t => {
+                        toolCount[t] = (toolCount[t] || 0) + 1;
+                    });
+                });
+                const topTools = Object.entries(toolCount).sort((a, b) => b[1] - a[1]).slice(0, 8);
+                // 最近更新
+                const recent = [...projects].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 6);
+                return { total, byStatus, byType, online, onlineRate, byShift, topTools, recent };
+            })();
+
+            // ===== 匯出 CSV（Excel 可開）=====
+            const exportCSV = () => {
+                const headers = ["專案名稱", "類型", "狀態", "單位", "負責人", "共同研究", "AI工具", "痛點描述", "預期目標", "優化方法", "目前進展", "專案網址", "啟動日", "上線日"];
+                const rows = filteredProjects.map(p => [
+                    p.title, p.type, normalizeStatus(p.status), p.dept, p.author,
+                    parseCollab(p.collaborators).join('、'), p.ai_tools,
+                    p.pain_point, p.target, p.solution, p.progress, p.link, p.start_date, p.launch_date
+                ]);
+                const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+                const csv = "\uFEFF" + [headers, ...rows].map(r => r.map(esc).join(",")).join("\r\n");
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `AI專案清單_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '')}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
 
             return (
                 <div className="min-h-screen">
@@ -1191,6 +1309,135 @@
                             </button>
                         </div>
                     </nav>
+
+                    {/* ===== 總覽首頁 ===== */}
+                    {currentTab === "總覽" && (
+                        <div className="p-6 max-w-7xl mx-auto">
+                            <div className="mb-6 flex items-end justify-between flex-wrap gap-3">
+                                <div>
+                                    <div className="page-eyebrow mb-1">DASHBOARD</div>
+                                    <h1 className="page-title mb-1">總覽<span className="accent">.</span></h1>
+                                    <p className="page-sub">全體 AI 專案成果一覽</p>
+                                </div>
+                                <button onClick={exportCSV} className="btn-ghost px-4 py-2.5 rounded-lg text-sm font-bold">⬇ 匯出專案清單 (Excel)</button>
+                            </div>
+
+                            {/* 數字卡 */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                <div className="app-card rounded-xl p-5">
+                                    <div className="text-sm t3 font-semibold mb-1">總專案數</div>
+                                    <div className="text-4xl font-black t1">{overview.total}</div>
+                                    <div className="text-xs t3 mt-1">工具 {overview.byType.工具}・專案 {overview.byType.專案}</div>
+                                </div>
+                                <div className="app-card rounded-xl p-5 edge-上線">
+                                    <div className="text-sm t3 font-semibold mb-1">已上線</div>
+                                    <div className="text-4xl font-black accent">{overview.online}</div>
+                                    <div className="text-xs t3 mt-1">上線率 {overview.onlineRate}%</div>
+                                </div>
+                                <div className="app-card rounded-xl p-5 edge-開發測試中">
+                                    <div className="text-sm t3 font-semibold mb-1">開發測試中</div>
+                                    <div className="text-4xl font-black t1">{overview.byStatus["開發測試中"]}</div>
+                                    <div className="text-xs t3 mt-1">進行中的專案</div>
+                                </div>
+                                <div className="app-card rounded-xl p-5 edge-下線">
+                                    <div className="text-sm t3 font-semibold mb-1">已下線</div>
+                                    <div className="text-4xl font-black t1">{overview.byStatus["下線"]}</div>
+                                    <div className="text-xs t3 mt-1">停用的專案</div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                                {/* 狀態分布長條 */}
+                                <div className="app-card rounded-xl p-5">
+                                    <h3 className="font-bold t1 mb-4">狀態分布</h3>
+                                    <div className="space-y-3">
+                                        {STATUS_LIST.map(s => {
+                                            const n = overview.byStatus[s];
+                                            const pct = overview.total > 0 ? Math.round(n / overview.total * 100) : 0;
+                                            return (
+                                                <div key={s}>
+                                                    <div className="flex justify-between text-xs mb-1">
+                                                        <span className={`px-2 py-0.5 rounded-full font-semibold tag-status-${s}`}>{s}</span>
+                                                        <span className="t2 font-semibold">{n} 個・{pct}%</span>
+                                                    </div>
+                                                    <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--input)' }}>
+                                                        <div className={`h-full bar-${s === '開發測試中' ? 'target' : (s === '上線' ? 'solution' : 'pain')}`} style={{ width: pct + '%' }}></div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* 各班別產出 */}
+                                <div className="app-card rounded-xl p-5">
+                                    <h3 className="font-bold t1 mb-4">各班別產出</h3>
+                                    <div className="space-y-3">
+                                        {UNIT_OPTIONS.map(u => {
+                                            const d = overview.byShift[u];
+                                            const maxTotal = Math.max(1, ...UNIT_OPTIONS.map(x => overview.byShift[x].total));
+                                            return (
+                                                <div key={u}>
+                                                    <div className="flex justify-between text-xs mb-1">
+                                                        <span className="font-bold t1">{u}</span>
+                                                        <span className="t2 font-semibold">{d.total} 個（上線 {d.online}）</span>
+                                                    </div>
+                                                    <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--input)' }}>
+                                                        <div className="h-full bar-solution" style={{ width: (d.total / maxTotal * 100) + '%' }}></div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {/* AI 工具排行 */}
+                                <div className="app-card rounded-xl p-5">
+                                    <h3 className="font-bold t1 mb-4">🤖 AI 工具使用排行</h3>
+                                    {overview.topTools.length === 0 ? (
+                                        <p className="text-sm t3">尚無資料（發布專案時填寫「使用的 AI 工具」即會統計）</p>
+                                    ) : (
+                                        <div className="space-y-2.5">
+                                            {overview.topTools.map(([name, n]) => {
+                                                const max = overview.topTools[0][1];
+                                                return (
+                                                    <div key={name} className="flex items-center gap-3">
+                                                        <span className="text-sm t1 font-semibold w-28 shrink-0 truncate">{name}</span>
+                                                        <div className="flex-1 h-5 rounded-md overflow-hidden" style={{ background: 'var(--input)' }}>
+                                                            <div className="h-full bar-solution" style={{ width: (n / max * 100) + '%' }}></div>
+                                                        </div>
+                                                        <span className="text-sm t2 font-bold w-8 text-right">{n}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 最近更新 */}
+                                <div className="app-card rounded-xl p-5">
+                                    <h3 className="font-bold t1 mb-4">🕒 最近發布</h3>
+                                    {overview.recent.length === 0 ? (
+                                        <p className="text-sm t3">尚無專案</p>
+                                    ) : (
+                                        <ul className="divide-y divide-[var(--border)]">
+                                            {overview.recent.map(p => (
+                                                <li key={p.id} onClick={() => openProjectDetail(p)} className="py-2.5 flex items-center justify-between gap-2 cursor-pointer hover:opacity-75 px-2 -mx-2 rounded transition-opacity">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className={`text-[11px] shrink-0 px-2 py-0.5 rounded font-semibold tag-type-${p.type === '專案' ? '專案' : '工具'}`}>{p.type === '專案' ? '專案' : '工具'}</span>
+                                                        <span className="text-sm t1 font-semibold truncate">{p.title}</span>
+                                                    </div>
+                                                    <span className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold tag-status-${normalizeStatus(p.status)}`}>{normalizeStatus(p.status)}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* ===== 專案詳情頁 ===== */}
                     {currentTab === "專案列表" && viewingProject && (() => {
@@ -1231,7 +1478,7 @@
                             </div>
 
                             <p className="text-sm t2 mb-3">
-                                負責人 {viewingProject.dept || 'JJ'}・{viewingProject.author}
+                                負責人 {viewingProject.dept || 'JJ'}・<span className="owner-name text-base">{viewingProject.author}</span>
                                 {parseCollab(viewingProject.collaborators).length > 0 && <span> ・ 🤝 共同研究：{parseCollab(viewingProject.collaborators).join('、')}</span>}
                                 {viewingProject.start_date && <span> ・ 啟動於 {viewingProject.start_date}</span>}
                                 {viewingProject.launch_date && viewingProject.launch_date !== "-" && <span> ・ 上線於 {viewingProject.launch_date}</span>}
@@ -1278,7 +1525,21 @@
                                     <div className="w-1 rounded bar-progress shrink-0"></div>
                                     <div className="flex-1">
                                         <h3 className="font-bold text-sm sec-progress mb-2">📈 目前進展</h3>
-                                        <p className="text-sm t1 whitespace-pre-wrap leading-relaxed">{viewingProject.progress || "無"}</p>
+                                        {(() => {
+                                            const items = splitProgress(viewingProject.progress);
+                                            if (items.length === 0) return <p className="text-sm t1">無</p>;
+                                            if (items.length === 1) return <p className="text-sm t1 whitespace-pre-wrap leading-relaxed">{items[0]}</p>;
+                                            return (
+                                                <ul className="space-y-1.5">
+                                                    {items.map((line, i) => (
+                                                        <li key={i} className="text-sm t1 leading-relaxed flex gap-2">
+                                                            <span className="sec-progress shrink-0">•</span>
+                                                            <span className="whitespace-pre-wrap">{line}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
 
@@ -1422,6 +1683,19 @@
                                         <option value="小工具">小工具</option>
                                         <option value="專案">專案</option>
                                     </select>
+                                    <select className="p-2.5 rounded-lg app-input text-sm" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                                        <option value="最新">排序：最新</option>
+                                        <option value="最舊">排序：最舊</option>
+                                        <option value="最多留言">排序：最多留言</option>
+                                        <option value="依狀態">排序：依狀態</option>
+                                        <option value="名稱">排序：名稱</option>
+                                    </select>
+                                    <button
+                                        onClick={() => setOnlyMine(v => !v)}
+                                        className={`px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${onlyMine ? 'btn-accent' : 'btn-ghost'}`}
+                                    >
+                                        👤 我的專案
+                                    </button>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
                                     {["全部", ...STATUS_LIST].map(s => (
@@ -1437,6 +1711,7 @@
                                     ))}
                                     <span className="text-xs t3 ml-auto flex items-center gap-2">
                                         顯示 {filteredProjects.length} / {projects.length} 筆
+                                        <button onClick={exportCSV} className="accent hover:underline font-semibold">⬇ 匯出</button>
                                         {hasActiveFilter && (
                                             <button onClick={clearFilters} className="accent hover:underline">清除篩選</button>
                                         )}
@@ -1464,8 +1739,8 @@
                                                 <div>
                                                     <h3 className="font-bold text-xl t1">{item.title}</h3>
                                                     <p className="text-xs t3 mt-1">
-                                                        {item.dept} · 負責人：{item.author}
-                                                        {cardCollab.length > 0 ? ` · 🤝 ${cardCollab.join('、')}` : ''}
+                                                        {item.dept} · 負責人：<span className="owner-name text-sm">{item.author}</span>
+                                                        {cardCollab.length > 0 ? <span> · 🤝 {cardCollab.join('、')}</span> : ''}
                                                         {' · 💬 '}{comments.filter(c => c.project_id === item.id).length}
                                                         {cardFiles.length > 0 ? ` · 📎 ${cardFiles.length}` : ''}
                                                         {item.video_url ? ' · 🎬' : ''}
@@ -1498,10 +1773,25 @@
                                             </div>
 
                                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 my-3 text-[13px] app-panel p-3.5 rounded-lg">
-                                                <div><span className="sec-pain font-bold block mb-1">🚨 痛點描述</span><p className="t2 line-clamp-2 leading-relaxed">{item.pain_point || "無"}</p></div>
-                                                <div><span className="sec-target font-bold block mb-1">🎯 預期目標</span><p className="t2 line-clamp-2 leading-relaxed">{item.target || "無"}</p></div>
-                                                <div><span className="sec-solution font-bold block mb-1">⚡ 優化方法</span><p className="t2 line-clamp-2 leading-relaxed">{item.solution || "無"}</p></div>
-                                                <div><span className="sec-progress font-bold block mb-1">📈 目前進展</span><p className="t2 line-clamp-2 leading-relaxed">{item.progress || "無"}</p></div>
+                                                <div><span className="sec-pain font-bold block mb-1">🚨 痛點描述</span><p className="t2 line-clamp-3 leading-relaxed">{item.pain_point || "無"}</p></div>
+                                                <div><span className="sec-target font-bold block mb-1">🎯 預期目標</span><p className="t2 line-clamp-3 leading-relaxed">{item.target || "無"}</p></div>
+                                                <div><span className="sec-solution font-bold block mb-1">⚡ 優化方法</span><p className="t2 line-clamp-3 leading-relaxed">{item.solution || "無"}</p></div>
+                                                <div>
+                                                    <span className="sec-progress font-bold block mb-1">📈 目前進展</span>
+                                                    {(() => {
+                                                        const items = splitProgress(item.progress);
+                                                        if (items.length === 0) return <p className="t2">無</p>;
+                                                        const show = items.slice(0, 3);
+                                                        return (
+                                                            <div className="t2 leading-relaxed">
+                                                                {show.map((line, i) => (
+                                                                    <div key={i} className="truncate">• {line}</div>
+                                                                ))}
+                                                                {items.length > 3 && <div className="t3">…還有 {items.length - 3} 筆</div>}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </div>
                                             </div>
 
                                             {cardImages.length > 0 && (
@@ -1959,8 +2249,8 @@
                                         <textarea rows="2" className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.solution} onChange={e => setNewProject({...newProject, solution: e.target.value})} placeholder="例如：利用該網址轉化文字..."></textarea>
                                     </div>
                                     <div>
-                                        <label className="text-xs sec-progress block mb-1">📈 目前進展</label>
-                                        <textarea rows="2" className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.progress} onChange={e => setNewProject({...newProject, progress: e.target.value})} placeholder="例如：已完成核心功能，剩介面調整與測試..."></textarea>
+                                        <label className="text-xs sec-progress block mb-1">📈 目前進展（每筆進度請按 Enter 換行，會自動分列顯示）</label>
+                                        <textarea rows="4" className="w-full p-2.5 rounded-lg app-input text-sm" value={newProject.progress} onChange={e => setNewProject({...newProject, progress: e.target.value})} placeholder={"例如（每行一筆）：\n8/16 完成支付寶一般轉帳驗證\n8/17 支付寶一般轉帳對應帳戶\n8/19 將整個回單憑證 AI 工具轉移到正式站"}></textarea>
                                     </div>
 
                                     <div>
