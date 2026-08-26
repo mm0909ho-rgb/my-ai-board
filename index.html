@@ -10,6 +10,10 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 中文字型：思源黑體（同時載入繁體 TC 與簡體 SC，避免簡繁混排字型不一）-->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
     <!-- Supabase JS SDK -->
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
@@ -57,14 +61,16 @@
         body {
             background: var(--bg);
             color: var(--text-1);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: "Noto Sans SC", "Noto Sans TC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             font-size: 15px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
             transition: background-color .25s ease, color .25s ease;
         }
 
         /* 頁面標題群組 */
         .page-eyebrow { font-size: 12px; letter-spacing: .18em; font-weight: 700; color: var(--text-3); }
-        .page-title { font-size: 30px; font-weight: 800; letter-spacing: -.01em; line-height: 1.15; color: var(--text-1); }
+        .page-title { font-size: 30px; font-weight: 900; letter-spacing: -.01em; line-height: 1.15; color: var(--text-1); }
         .page-sub { font-size: 14px; color: var(--text-2); }
 
         .app-card  { background: var(--card);  border: 1px solid var(--border); box-shadow: var(--shadow); }
@@ -125,8 +131,8 @@
 
         /* 負責人名稱：醒目字體 */
         .owner-name {
-            font-family: "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
-            font-weight: 800;
+            font-family: "Noto Sans SC", "Noto Sans TC", -apple-system, "PingFang TC", sans-serif;
+            font-weight: 900;
             color: var(--accent);
             letter-spacing: .01em;
         }
@@ -1855,7 +1861,7 @@
                                         >
                                             <div className="flex items-center justify-between pb-3 border-b bd">
                                                 <div>
-                                                    <h3 className="font-bold text-xl t1">{item.title}{item.view_password ? <span title="此專案受密碼保護" className="ml-1.5 text-sm">🔒</span> : null}</h3>
+                                                    <h3 className="font-black text-xl t1">{item.title}{item.view_password ? <span title="此專案受密碼保護" className="ml-1.5 text-sm">🔒</span> : null}</h3>
                                                     <p className="text-xs t3 mt-1">
                                                         {item.dept} · 負責人：<span className="owner-name text-sm">{item.author}</span>
                                                         {cardCollab.length > 0 ? <span> · 🤝 {cardCollab.join('、')}</span> : ''}
