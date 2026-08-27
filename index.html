@@ -2516,10 +2516,10 @@
 
                                     {/* 相關文件 */}
                                     <div>
-                                        <label className="text-xs t3 block mb-1">📎 相關文件（txt / pdf / office 等，最多 {MAX_FILES} 個，每個 ≤ {MAX_FILE_MB}MB）</label>
+                                        <label className="text-xs t3 block mb-1">📎 相關文件（txt / pdf / office / html 等，最多 {MAX_FILES} 個，每個 ≤ {MAX_FILE_MB}MB）</label>
                                         <input
                                             type="file"
-                                            accept=".txt,.md,.csv,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                                            accept=".txt,.md,.csv,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.html,.htm,.json,.zip"
                                             multiple
                                             onChange={handleDocUpload}
                                             disabled={uploadingFiles || newProject.files.length >= MAX_FILES}
@@ -2528,7 +2528,7 @@
                                         <p className="text-[11px] t3 mt-1">
                                             {uploadingFiles ? '⏳ 文件上傳中...' : `已上傳 ${newProject.files.length} / ${MAX_FILES} 個`}
                                         </p>
-                                        <p className="text-[11px] t3 mt-1">⚠️ 文字檔（txt）請先存成 UTF-8 編碼再上傳，否則線上開啟會顯示亂碼（記事本「另存新檔」→ 編碼選 UTF-8）</p>
+                                        <p className="text-[11px] t3 mt-1">⚠️ 文字類檔案（txt / md / csv / html 等）請先存成 UTF-8 編碼再上傳，否則線上開啟會顯示亂碼（記事本「另存新檔」→ 編碼選 UTF-8；html 也可在檔案開頭加一行 &lt;meta charset="utf-8"&gt;）</p>
                                         {newProject.files.length > 0 && (
                                             <ul className="mt-2 space-y-1.5">
                                                 {newProject.files.map((f, idx) => (
