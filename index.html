@@ -945,8 +945,7 @@
                 const shift = newUser.unit.includes('-') ? newUser.unit.split('-')[1] : '早';
 
                 if (supabase) {
-                    const hashed = await hashPassword(DEFAULT_PASSWORD);
-                    const userItem = { ...newUser, password: hashed, shift, status: 'active' };
+                   const userItem = { ...newUser, password: DEFAULT_PASSWORD, shift, status: 'active' };
                     const { data, error } = await supabase.from('profiles').insert([userItem]).select();
                     if (error) {
                         alert("新增失敗：" + error.message);
