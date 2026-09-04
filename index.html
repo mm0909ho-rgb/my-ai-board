@@ -573,10 +573,10 @@
                         const { data, error } = await supabase.from('profiles').select('*').eq('id', currentUser.id).maybeSingle();
                         if (error || !data) { setMyPwError("讀取帳號失敗，請稍後再試"); setMyPwSaving(false); return; }
                         if (!(await verifyPassword(oldPw, data.password))) { setMyPwError("目前密碼不正確"); setMyPwSaving(false); return; }
-                        const hashed = await hashPassword(newPw);
-                        const { error: upErr } = await supabase.from('profiles').update({ password: hashed }).eq('id', currentUser.id);
+                       
+                      const { error: upErr } = await supabase.from('profiles').update({ password: newPw }).eq('id', currentUser.id);
                         if (upErr) { setMyPwError("更新失敗：" + upErr.message); setMyPwSaving(false); return; }
-                        setUsers(users.map(u => u.id === currentUser.id ? { ...u, password: hashed } : u));
+                       setUsers(users.map(u => u.id === currentUser.id ? {...u, password: newPw} : u));
                     } else {
                         const me = users.find(u => u.id === currentUser.id);
                         if (!me || !(await verifyPassword(oldPw, me.password))) { setMyPwError("目前密碼不正確"); setMyPwSaving(false); return; }
