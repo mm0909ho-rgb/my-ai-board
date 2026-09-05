@@ -482,7 +482,12 @@
                 if (supabase) {
                     try {
                         const { data: projData } = await supabase.from('projects').select('*').order('id', { ascending: false });
-                        const { data: userData } = await supabase.from('profiles').select('*');
+                        const { data: userData } = await supabase
+  .from('profiles')
+  .select('*')
+  .order('role_priority', { ascending: true })
+  .order('shift_priority', { ascending: true })
+  .order('name', { ascending: true });
                         if (projData) setProjects(projData);
                         if (userData && userData.length > 0) setUsers(userData);
                         const { data: commentData } = await supabase.from('comments').select('*').order('id', { ascending: true });
