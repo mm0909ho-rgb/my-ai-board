@@ -311,6 +311,7 @@ const [users, setUsers] = useState([
 ]);
 const [searchTerm, setSearchTerm] = useState("");
 const [filterRole, setFilterRole] = useState("all");
+const [groupBy, setGroupBy] = useState("role");
 
             // ===== 登入狀態 =====
             const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -2081,7 +2082,20 @@ const [filterRole, setFilterRole] = useState("all");
     >
       {r === "all" ? "全部" : r}
     </button>
-  ))}
+  ))}<div className="flex gap-1 ml-2 border-l bd pl-2">
+  <button
+    onClick={() => setGroupBy("role")}
+    className={`text-xs px-3 py-2 rounded-lg font-semibold ${groupBy === "role" ? "btn-accent" : "btn-ghost"}`}
+  >
+    依角色分組
+  </button>
+  <button
+    onClick={() => setGroupBy("shift")}
+    className={`text-xs px-3 py-2 rounded-lg font-semibold ${groupBy === "shift" ? "btn-accent" : "btn-ghost"}`}
+  >
+    依班別分組
+  </button>
+</div>
 </div>
                             <div className="app-card rounded-xl p-4 overflow-x-auto">
                                 <table className="w-full text-left text-sm t2">
