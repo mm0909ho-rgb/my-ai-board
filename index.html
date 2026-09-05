@@ -1236,14 +1236,20 @@ const [groupBy, setGroupBy] = useState("role");const groupedUsers = useMemo(() =
             }, [users, projects]);
 
             const unitGroups = useMemo(() => {
-                const groups = {};
-                memberStats.forEach(m => {
-                    const unit = UNIT_OPTIONS.includes(m.user.unit) ? m.user.unit : `${getBaseUnit(m.user)}-${getShift(m.user) || '早'}`;
-                    if (!groups[unit]) groups[unit] = [];
-                    groups[unit].push(m);
-                });
-                return groups;
-            }, [memberStats]);
+    const groups = {};
+    memberStats.forEach(m => {
+        const unit = UNIT_OPTIONS.includes(m.user.unit) ? m.user.unit : `${getBaseUnit(m.user)}-${getShift(m.user) || '早'}`;
+        if (!groups[unit]) groups[unit] = [];
+        groups[unit].push(m);
+    });
+    Object.keys(groups).forEach(unit => {
+        const byCreationOrder = [...groups[unit]].sort((a, b) => a.user.id - b.user.id);
+        const localRankMap = {};
+        byCreationOrder.forEach((m, i) => { localRankMap[m.user.id] = i + 1; });
+        groups[unit] = groups[unit].map(m => ({ ...m, rank: localRankMap[m.user.id] }));
+    });
+    return groups;
+}, [memberStats]);
 
             const viewingProject = viewingProjectId != null
                 ? projects.find(p => p.id === viewingProjectId)
