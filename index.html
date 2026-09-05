@@ -304,12 +304,13 @@
                 try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
             }, [theme]);
 
-            // 本地模擬模式下的預設帳號
-            const [users, setUsers] = useState([const [searchTerm, setSearchTerm] = useState("");
+           // 本地模擬模式下的預設帳號
+const [users, setUsers] = useState([
+    { id: "1", name: "Admin", account: "admin01", password: "123456", role: "BOSS", unit: "JJ-早", shift: "早", status: "active" },
+    { id: "2", name: "成員 A", account: "usera01", password: "111111", role: "MEMBER", unit: "JJ-中", shift: "中", status: "active" }
+]);
+const [searchTerm, setSearchTerm] = useState("");
 const [filterRole, setFilterRole] = useState("all");
-                { id: "1", name: "Admin", account: "admin01", password: "123456", role: "BOSS", unit: "JJ-早", shift: "早", status: "active" },
-                { id: "2", name: "成員 A", account: "usera01", password: "111111", role: "MEMBER", unit: "JJ-中", shift: "中", status: "active" }
-            ]);
 
             // ===== 登入狀態 =====
             const [isLoggedIn, setIsLoggedIn] = useState(false);
