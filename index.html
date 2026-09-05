@@ -2122,10 +2122,14 @@ const [groupBy, setGroupBy] = useState("role");const groupedUsers = useMemo(() =
                                         </tr>
                                     </thead>
                                     <tbody>
-                                   {users
-  .filter(u => filterRole === "all" || u.role === filterRole)
-  .filter(u => !searchTerm || u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.account.toLowerCase().includes(searchTerm.toLowerCase()))
-  .map(u => {
+                                   {groupedUsers.map(group => (
+  <React.Fragment key={group.key}>
+    <tr>
+      <td colSpan={6} className="p-2 bg-white/5 text-xs font-bold t2">
+        {group.label} <span className="t3 font-normal">({group.members.length})</span>
+      </td>
+    </tr>
+    {group.members.map(u => {
                                             const disabled = u.status === 'disabled';
                                             const isSelf = u.account === currentUser.account;
                                             const manageable = canManageAccount(currentUser, u);
@@ -2165,10 +2169,12 @@ const [groupBy, setGroupBy] = useState("role");const groupedUsers = useMemo(() =
                                                             )}
                                                         </div>
                                                     </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
+                                                   </tr>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </tbody>           
                                 </table>
                             </div>
                         </div>
