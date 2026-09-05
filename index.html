@@ -1197,7 +1197,7 @@ const [filterRole, setFilterRole] = useState("all");
                     STATUS_LIST.forEach(s => counts[s] = ps.filter(p => normalizeStatus(p.status) === s).length);
                     return { user: u, projects: ps, counts, total: ps.length };
                 }).sort((a, b) => (b.counts["上線"] - a.counts["上線"]) || (b.total - a.total));
-                return list.map((m, i) => ({ ...m, rank: i + 1 }));
+               return list.map((m, i) => ({ ...m, rank: m.user.id }));
             }, [users, projects]);
 
             const unitGroups = useMemo(() => {
@@ -1971,7 +1971,11 @@ const [filterRole, setFilterRole] = useState("all");
 
                             {Object.keys(unitGroups)
                                 .filter(unit => memberShift === "全部" || unit === memberShift)
-                                .sort()
+                                .sort((a, b) => {
+  const shiftOrder = { "早": 0, "中": 1, "晚": 2 };
+  const getShiftChar = (unit) => unit.split("-")[1] || unit;
+  return (shiftOrder[getShiftChar(a)] ?? 3) - (shiftOrder[getShiftChar(b)] ?? 3);
+})
                                 .map(unit => {
                                 const members = unitGroups[unit];
                                 const unitCounts = {};
