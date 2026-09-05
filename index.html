@@ -305,7 +305,8 @@
             }, [theme]);
 
             // 本地模擬模式下的預設帳號
-            const [users, setUsers] = useState([
+            const [users, setUsers] = useState([const [searchTerm, setSearchTerm] = useState("");
+const [filterRole, setFilterRole] = useState("all");
                 { id: "1", name: "Admin", account: "admin01", password: "123456", role: "BOSS", unit: "JJ-早", shift: "早", status: "active" },
                 { id: "2", name: "成員 A", account: "usera01", password: "111111", role: "MEMBER", unit: "JJ-中", shift: "中", status: "active" }
             ]);
@@ -2059,7 +2060,24 @@
                                     👤+ 新增成員帳號
                                 </button>
                             </div>
-
+<div className="flex flex-wrap items-center gap-2 mb-4">
+  <input
+    type="text"
+    placeholder="搜尋姓名或帳號..."
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    className="app-input text-sm rounded-lg px-3 py-2 flex-1 min-w-[180px]"
+  />
+  {["all", "BOSS", "ADMIN", "MEMBER"].map(r => (
+    <button
+      key={r}
+      onClick={() => setFilterRole(r)}
+      className={`text-xs px-3 py-2 rounded-lg font-semibold ${filterRole === r ? "btn-accent" : "btn-ghost"}`}
+    >
+      {r === "all" ? "全部" : r}
+    </button>
+  ))}
+</div>
                             <div className="app-card rounded-xl p-4 overflow-x-auto">
                                 <table className="w-full text-left text-sm t2">
                                     <thead className="border-b bd t3">
@@ -2073,7 +2091,10 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {users.map(u => {
+                                   {users
+  .filter(u => filterRole === "all" || u.role === filterRole)
+  .filter(u => !searchTerm || u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.account.toLowerCase().includes(searchTerm.toLowerCase()))
+  .map(u => {
                                             const disabled = u.status === 'disabled';
                                             const isSelf = u.account === currentUser.account;
                                             const manageable = canManageAccount(currentUser, u);
