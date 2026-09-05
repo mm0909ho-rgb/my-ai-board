@@ -311,7 +311,41 @@ const [users, setUsers] = useState([
 ]);
 const [searchTerm, setSearchTerm] = useState("");
 const [filterRole, setFilterRole] = useState("all");
-const [groupBy, setGroupBy] = useState("role");
+const [groupBy, setGroupBy] = useState("role");const groupedUsers = useMemo(() => {
+  const filtered = users
+    .filter(u => filterRole === "all" || u.role === filterRole)
+    .filter(u => !searchTerm || u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.account.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const roleOrder = { BOSS: 0, ADMIN: 1, MEMBER: 2 };
+  const shiftOrder = { "早": 0, "中": 1, "晚": 2 };
+  const roleLabel = { BOSS: "管理層 - BOSS", ADMIN: "管理層 - ADMIN", MEMBER: "一般成員" };
+  const shiftLabel = { "早": "早班", "中": "中班", "晚": "晚班" };
+
+  const groupKeyOf = groupBy === "role" ? (u => u.role) : (u => u.shift);
+  const groupOrder = groupBy === "role" ? ["BOSS", "ADMIN", "MEMBER"] : ["早", "中", "晚"];
+  const labelOf = groupBy === "role" ? roleLabel : shiftLabel;
+
+  const groups = {};
+  filtered.forEach(u => {
+    const key = groupKeyOf(u);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(u);
+  });
+
+  Object.values(groups).forEach(list => {
+    list.sort((a, b) => {
+      const diff = groupBy === "role"
+        ? (shiftOrder[a.shift] ?? 3) - (shiftOrder[b.shift] ?? 3)
+        : (roleOrder[a.role] ?? 3) - (roleOrder[b.role] ?? 3);
+      if (diff !== 0) return diff;
+      return a.name.localeCompare(b.name, 'zh-Hant');
+    });
+  });
+
+  return groupOrder
+    .filter(key => groups[key] && groups[key].length > 0)
+    .map(key => ({ key, label: labelOf[key], members: groups[key] }));
+}, [users, filterRole, searchTerm, groupBy]);
 
             // ===== 登入狀態 =====
             const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -2066,36 +2100,14 @@ const [groupBy, setGroupBy] = useState("role");
                                     👤+ 新增成員帳號
                                 </button>
                             </div>
-<div className="flex flex-wrap items-center gap-2 mb-4">
-  <input
-    type="text"
-    placeholder="搜尋姓名或帳號..."
-    value={searchTerm}
-    onChange={(e) => setSearchTerm(e.target.value)}
-    className="app-input text-sm rounded-lg px-3 py-2 flex-1 min-w-[180px]"
-  />
-  {["all", "BOSS", "ADMIN", "MEMBER"].map(r => (
-    <button
-      key={r}
-      onClick={() => setFilterRole(r)}
-      className={`text-xs px-3 py-2 rounded-lg font-semibold ${filterRole === r ? "btn-accent" : "btn-ghost"}`}
-    >
-      {r === "all" ? "全部" : r}
-    </button>
-  ))}<div className="flex gap-1 ml-2 border-l bd pl-2">
-  <button
-    onClick={() => setGroupBy("role")}
-    className={`text-xs px-3 py-2 rounded-lg font-semibold ${groupBy === "role" ? "btn-accent" : "btn-ghost"}`}
-  >
-    依角色分組
-  </button>
-  <button
-    onClick={() => setGroupBy("shift")}
-    className={`text-xs px-3 py-2 rounded-lg font-semibold ${groupBy === "shift" ? "btn-accent" : "btn-ghost"}`}
-  >
-    依班別分組
-  </button>
-</div>
+<select
+  value={groupBy}
+  onChange={(e) => setGroupBy(e.target.value)}
+  className="app-input text-xs px-3 py-2 rounded-lg font-semibold ml-2"
+>
+  <option value="role">依角色分組</option>
+  <option value="shift">依班別分組</option>
+</select>
 </div>
                             <div className="app-card rounded-xl p-4 overflow-x-auto">
                                 <table className="w-full text-left text-sm t2">
