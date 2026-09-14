@@ -36034,12 +36034,12 @@ function App() {
       const tools = p.ai_tools ? [...new Set(p.ai_tools.split(/[,，、]/).map(toolName).filter(Boolean))].slice(0, 3) : [];
       const category = projectMeta(p).category || '尚未分類';
       const highlights = methodHighlightsOf(p);
-      const previousCategory = index > 0 ? projectMeta(displayedMatched[index - 1]).category : '';
+      const previousCategory = index > 0 ? projectMeta(displayedMatched[index - 1]).category || '尚未分類' : '';
       const showCategoryHeading = catalogCategory === '全部' && category !== previousCategory;
       return [showCategoryHeading && /*#__PURE__*/React.createElement("div", {
         key: `group-${category}`,
         className: "catalog-group-heading"
-      }, /*#__PURE__*/React.createElement("h2", null, category), /*#__PURE__*/React.createElement("span", null, displayedMatched.filter(item => projectMeta(item).category === category).length, " 項")), /*#__PURE__*/React.createElement("article", {
+      }, /*#__PURE__*/React.createElement("h2", null, category), /*#__PURE__*/React.createElement("span", null, displayedMatched.filter(item => (projectMeta(item).category || '尚未分類') === category).length, " 項")), /*#__PURE__*/React.createElement("article", {
         key: p.id,
         className: "app-card knowledge-card"
       }, /*#__PURE__*/React.createElement("div", {
