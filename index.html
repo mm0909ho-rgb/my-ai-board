@@ -185,6 +185,9 @@
         .catalog-results-head { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:0 2px 12px; }
         .catalog-results-head h2 { color:var(--text-1); font-size:18px; font-weight:800; }
         .catalog-results-head p { color:var(--text-3); font-size:13px; }
+        .catalog-group-heading { display:flex; align-items:center; gap:8px; margin:6px 2px 0; }
+        .catalog-group-heading h2 { color:var(--text-1); font-size:17px; font-weight:800; }
+        .catalog-group-heading span { color:var(--text-3); font-size:12px; }
         .knowledge-list { display:grid; gap:14px; }
         .knowledge-card { display:grid; grid-template-columns:minmax(250px,.72fr) minmax(0,1.6fr); border-radius:16px; overflow:hidden; }
         .knowledge-summary { min-width:0; padding:20px; border-right:1px solid var(--border); }
@@ -35946,7 +35949,13 @@ function App() {
     item: item
   })))), currentTab === '找工具・學做法' && (() => {
     const readable = projects.filter(canReadProject);
-    const matched = readable.filter(p => (catalogCategory === '全部' || (projectMeta(p).category || '尚未分類') === catalogCategory) && (!catalogAvailable || projectStage(p) === '上線' && safeLink(p.link)) && [p.title, p.author, summaryOf(p), p.solution, p.ai_tools, projectMeta(p).category].filter(Boolean).join(' ').toLowerCase().includes(catalogQuery.trim().toLowerCase()));
+    const matched = readable.filter(p => {
+      const category = projectMeta(p).category || '尚未分類';
+      const matchesCategory = catalogCategory === '全部' || category === catalogCategory;
+      return matchesCategory && (!catalogAvailable || projectStage(p) === '上線' && safeLink(p.link)) && [p.title, p.author, summaryOf(p), p.solution, p.ai_tools, category].filter(Boolean).join(' ').toLowerCase().includes(catalogQuery.trim().toLowerCase());
+    });
+    const catalogCategoryOrder = [...CATEGORY_LIST, '尚未分類'];
+    const displayedMatched = catalogCategory === '全部' ? [...matched].sort((a, b) => catalogCategoryOrder.indexOf(projectMeta(a).category || '尚未分類') - catalogCategoryOrder.indexOf(projectMeta(b).category || '尚未分類')) : matched;
     return /*#__PURE__*/React.createElement("main", {
       className: "p-6 max-w-7xl mx-auto"
     }, /*#__PURE__*/React.createElement("section", {
@@ -36021,11 +36030,16 @@ function App() {
       }
     }, "清除篩選")) : /*#__PURE__*/React.createElement("div", {
       className: "knowledge-list"
-    }, matched.map(p => {
+    }, displayedMatched.map((p, index) => {
       const tools = p.ai_tools ? [...new Set(p.ai_tools.split(/[,，、]/).map(toolName).filter(Boolean))].slice(0, 3) : [];
       const category = projectMeta(p).category || '尚未分類';
       const highlights = methodHighlightsOf(p);
-      return /*#__PURE__*/React.createElement("article", {
+      const previousCategory = index > 0 ? projectMeta(displayedMatched[index - 1]).category : '';
+      const showCategoryHeading = catalogCategory === '全部' && category !== previousCategory;
+      return [showCategoryHeading && /*#__PURE__*/React.createElement("div", {
+        key: `group-${category}`,
+        className: "catalog-group-heading"
+      }, /*#__PURE__*/React.createElement("h2", null, category), /*#__PURE__*/React.createElement("span", null, displayedMatched.filter(item => projectMeta(item).category === category).length, " 項")), /*#__PURE__*/React.createElement("article", {
         key: p.id,
         className: "app-card knowledge-card"
       }, /*#__PURE__*/React.createElement("div", {
@@ -36075,7 +36089,7 @@ function App() {
         href: safeLink(p.link),
         target: "_blank",
         rel: "noopener noreferrer"
-      }, "開啟工具 ↗")))));
+      }, "開啟工具 ↗")))))];
     })));
   })(), currentTab === "單位成員" && /*#__PURE__*/React.createElement("div", {
     className: "p-6 max-w-7xl mx-auto"
