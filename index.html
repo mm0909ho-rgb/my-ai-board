@@ -36154,9 +36154,7 @@ function App() {
       className: "w-10 h-10 rounded-lg app-panel flex items-center justify-center text-sm font-bold accent"
     }, getShift(m.user)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "font-black text-lg t1 flex items-center gap-1.5"
-    }, m.user.name, /*#__PURE__*/React.createElement("span", {
-      className: "text-xs t3 font-normal"
-    }, "成員 #", m.user.id)), /*#__PURE__*/React.createElement("div", {
+    }, m.user.name), /*#__PURE__*/React.createElement("div", {
       className: "text-xs t3 mt-0.5"
     }, STATUS_LIST.filter(s => m.counts[s] > 0).map(s => `${s} ${m.counts[s]}`).join('・') || "尚無成果"))), /*#__PURE__*/React.createElement("div", {
       className: "text-right shrink-0"
