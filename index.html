@@ -6,10 +6,9 @@
     <title>AI 成果 Dashboard</title>
     <meta name="description" content="AI 成果工作台：追蹤專案、尋找工具、共用做法與改善成果。">
     <script>
-    (function(){var t='system';try{t=localStorage.getItem('ai_dashboard_theme')||'system'}catch(e){}
-    if(!['dark','light','system'].includes(t))t='system';
-    var r=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;
-    document.documentElement.dataset.theme=r;document.documentElement.style.colorScheme=r;})();
+    (function(){var t='light';try{t=localStorage.getItem('ai_dashboard_theme')||'light'}catch(e){}
+    if(!['dark','light'].includes(t))t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+    document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;})();
     </script>
     <style>html[data-theme="dark"]{background:#171a24;color:#e7e9f0}html[data-theme="light"]{background:#f4f6fa;color:#2b2f3a}</style>
     <!-- React runtime; JSX precompiled for reliable first load -->
@@ -177,6 +176,7 @@
         .catalog-mode { display:flex; gap:3px; flex:0 0 auto; padding:3px; border-radius:11px; background:var(--input); }
         .catalog-mode button { min-height:38px; padding:0 14px; border:0; border-radius:9px; color:var(--text-2); background:transparent; font-size:14px; font-weight:800; }
         .catalog-mode button[aria-pressed="true"] { background:var(--text-1); color:var(--bg); }
+        .catalog-mode-help { margin:10px 2px 0; color:var(--text-3); font-size:12px; line-height:1.6; }
         .catalog-search { min-height:44px; }
         .catalog-online { flex:0 0 auto; color:var(--text-2); }
         .catalog-filters { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
@@ -209,6 +209,16 @@
         .knowledge-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
         .knowledge-complete { color:#85cba5; font-size:12px; }
         html[data-theme="light"] .knowledge-complete { color:#286e4a; }
+        .project-type-help { margin:4px 0 10px; color:var(--text-3); font-size:12px; }
+        .project-type-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .project-type-choice { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:70px; padding:14px 16px; border:1px solid var(--border); border-radius:14px; background:var(--panel); color:var(--text-1); text-align:left; }
+        .project-type-choice[aria-pressed="true"] { border-color:var(--text-1); background:var(--text-1); color:var(--bg); }
+        .project-type-copy strong,.project-type-copy span { display:block; }
+        .project-type-copy strong { font-size:14px; font-weight:800; }
+        .project-type-copy span { margin-top:4px; color:var(--text-3); font-size:11px; }
+        .project-type-choice[aria-pressed="true"] .project-type-copy span { color:var(--bg); opacity:.72; }
+        .project-type-dot { flex:0 0 auto; width:13px; height:13px; border:2px solid currentColor; border-radius:50%; opacity:.35; }
+        .project-type-choice[aria-pressed="true"] .project-type-dot { border-color:var(--accent); background:var(--accent); opacity:1; }
         .task-row { display:grid; grid-template-columns:minmax(0,1fr) 100px 100px; gap:12px; padding:14px 0; border-bottom:1px solid var(--border); align-items:center; }
         .task-row:last-child { border-bottom:0; }
         .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -241,6 +251,7 @@
             .knowledge-step-copy strong,.knowledge-step-copy span { white-space:normal; }
             .knowledge-insight-grid { grid-template-columns:1fr; }
             .knowledge-actions { align-items:flex-start; flex-direction:column; }
+            .project-type-grid { grid-template-columns:1fr; }
         }
         @media(prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; scroll-behavior:auto!important; } }
     </style>
@@ -33873,6 +33884,11 @@ const getBaseUnit = u => {
   if (!u.unit) return 'JJ';
   return u.unit.split('-')[0];
 };
+const unitOfUser = u => {
+  if (!u) return '';
+  if (UNIT_OPTIONS.includes(u.unit)) return u.unit;
+  return `${getBaseUnit(u)}-${getShift(u) || '早'}`;
+};
 
 // 解析 image_url：支援舊格式（單一字串）與新格式（JSON 陣列字串）
 const parseImages = val => {
@@ -33942,31 +33958,23 @@ function App() {
   const [theme, setTheme] = useState(() => {
     try {
       const v = localStorage.getItem(THEME_KEY);
-      return ['dark', 'light', 'system'].includes(v) ? v : 'system';
+      if (['dark', 'light'].includes(v)) return v;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     } catch (e) {
-      return 'system';
+      return 'light';
     }
   });
   useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      const resolved = theme === 'system' ? media.matches ? 'dark' : 'light' : theme;
-      document.documentElement.dataset.theme = resolved;
-      document.documentElement.style.colorScheme = resolved;
-    };
-    apply();
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch (e) {}
-    media.addEventListener('change', apply);
     const sync = e => {
-      if (e.key === THEME_KEY) setTheme(['dark', 'light', 'system'].includes(e.newValue) ? e.newValue : 'system');
+      if (e.key === THEME_KEY && ['dark', 'light'].includes(e.newValue)) setTheme(e.newValue);
     };
     window.addEventListener('storage', sync);
-    return () => {
-      media.removeEventListener('change', apply);
-      window.removeEventListener('storage', sync);
-    };
+    return () => window.removeEventListener('storage', sync);
   }, [theme]);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogCategory, setCatalogCategory] = useState('全部');
@@ -34786,8 +34794,9 @@ function App() {
   // 依成員名稱取得其所屬單位（找不到則回傳第一個選項）
   const unitOfMember = name => {
     const u = users.find(x => x.name === name);
-    return u && UNIT_OPTIONS.includes(u.unit) ? u.unit : UNIT_OPTIONS[0];
+    return unitOfUser(u) || UNIT_OPTIONS[0];
   };
+  const membersInUnit = unit => users.filter(user => unitOfUser(user) === unit);
 
   // 快速切換專案狀態（詳情頁一鍵操作，僅本人；會自動寫入系統紀錄）
   const handleQuickStatusChange = async (item, newStatus) => {
@@ -35247,7 +35256,7 @@ function App() {
     className: "theme-switch",
     role: "group",
     "aria-label": "外觀模式"
-  }, [["system", "自動"], ["light", "淺色"], ["dark", "深色"]].map(([value, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [["light", "☀ 淺色"], ["dark", "☾ 深色"]].map(([value, label]) => /*#__PURE__*/React.createElement("button", {
     key: value,
     type: "button",
     "aria-pressed": theme === value,
@@ -35986,7 +35995,9 @@ function App() {
       type: "checkbox",
       checked: catalogAvailable,
       onChange: e => setCatalogAvailable(e.target.checked)
-    }), "只看已上線且有連結")), /*#__PURE__*/React.createElement("div", {
+    }), "只看已上線且有連結")), /*#__PURE__*/React.createElement("p", {
+      className: "catalog-mode-help"
+    }, catalogMode === '找工具' ? '找工具：依需求找到可直接開啟使用的成果，重點看適用情境、狀態與入口。' : '學做法：不一定要使用同一套工具，重點看同事如何解題、採用哪些方法與可複用亮點。'), /*#__PURE__*/React.createElement("div", {
       className: "catalog-filters",
       "aria-label": "用途分類"
     }, ['全部', ...CATEGORY_LIST, '尚未分類'].map(v => /*#__PURE__*/React.createElement("button", {
@@ -36516,18 +36527,26 @@ function App() {
   }, "尚未分類"), CATEGORY_LIST.map(v => /*#__PURE__*/React.createElement("option", {
     key: v
   }, v)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    className: "text-xs t3 block mb-1"
-  }, "類型"), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-1.5"
-  }, ["小工具", "專案"].map(t => /*#__PURE__*/React.createElement("button", {
-    key: t,
+    className: "text-sm t1 font-bold block"
+  }, "專案類型"), /*#__PURE__*/React.createElement("p", {
+    className: "project-type-help"
+  }, "先決定這是大型專案，還是單一功能的小工具。"), /*#__PURE__*/React.createElement("div", {
+    className: "project-type-grid"
+  }, [["專案", "較大型，可包含多個畫面"], ["小工具", "單一功能的小工具"]].map(([type, description]) => /*#__PURE__*/React.createElement("button", {
+    key: type,
     type: "button",
     onClick: () => setNewProject({
       ...newProject,
-      type: t
+      type
     }),
-    className: `px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${newProject.type === t ? 'btn-accent' : 'btn-ghost'}`
-  }, t)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "project-type-choice",
+    "aria-pressed": newProject.type === type
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "project-type-copy"
+  }, /*#__PURE__*/React.createElement("strong", null, type), /*#__PURE__*/React.createElement("span", null, description)), /*#__PURE__*/React.createElement("span", {
+    className: "project-type-dot",
+    "aria-hidden": "true"
+  }))))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "text-xs t3 block mb-1"
   }, "開發進度"), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-1.5"
@@ -36546,10 +36565,17 @@ function App() {
   }, "單位"), /*#__PURE__*/React.createElement("select", {
     className: "w-full p-2.5 rounded-lg app-input text-sm",
     value: newProject.dept,
-    onChange: e => setNewProject({
-      ...newProject,
-      dept: e.target.value
-    })
+    onChange: e => {
+      const nextDept = e.target.value;
+      const eligible = membersInUnit(nextDept);
+      const currentAuthor = newProject.author || currentUser.name;
+      const nextAuthor = editingProjectId || eligible.some(user => user.name === currentAuthor) ? currentAuthor : eligible[0]?.name || '';
+      setNewProject({
+        ...newProject,
+        dept: nextDept,
+        author: nextAuthor
+      });
+    }
   }, !UNIT_OPTIONS.includes(newProject.dept) && newProject.dept ? /*#__PURE__*/React.createElement("option", {
     value: newProject.dept
   }, newProject.dept) : null, UNIT_OPTIONS.map(opt => /*#__PURE__*/React.createElement("option", {
@@ -36560,7 +36586,7 @@ function App() {
   }, "發布者 / 負責人"), /*#__PURE__*/React.createElement("select", {
     disabled: !!editingProjectId,
     className: "w-full p-2.5 rounded-lg app-input text-sm",
-    value: newProject.author || currentUser.name,
+    value: newProject.author || (membersInUnit(newProject.dept).some(user => user.name === currentUser.name) ? currentUser.name : ''),
     onChange: e => {
       const name = e.target.value;
       setNewProject(prev => ({
@@ -36570,7 +36596,10 @@ function App() {
         collaborators: prev.collaborators.filter(n => n !== name)
       }));
     }
-  }, users.map(user => /*#__PURE__*/React.createElement("option", {
+  }, membersInUnit(newProject.dept).length === 0 && /*#__PURE__*/React.createElement("option", {
+    value: "",
+    disabled: true
+  }, "此班別尚無成員"), users.filter(user => unitOfUser(user) === newProject.dept || editingProjectId && user.name === newProject.author).map(user => /*#__PURE__*/React.createElement("option", {
     key: user.id,
     value: user.name
   }, user.name))), editingProjectId && /*#__PURE__*/React.createElement("p", {
