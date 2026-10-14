@@ -809,33 +809,21 @@ function App() {
     return parseCollab(item.collaborators).includes(currentUser.name);
   };
 
-  // ⚡ 圖片自動等比例壓縮 (最高 800px，品質 70%)
-  const compressImage = file => new Promise((resolve, reject) => {
+  // 保留原始位元組，避免文字截圖因縮圖或 JPEG 重編碼而失真。
+  const readOriginalImage = file => new Promise((resolve, reject) => {
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+      reject(new Error('請使用 PNG、JPEG、WebP 或 GIF 圖片')); return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      reject(new Error('每張圖片上限 5 MB，請裁切不需要的區域後再上傳')); return;
+    }
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("讀取圖片失敗"));
-    reader.onload = event => {
+    reader.onerror = () => reject(new Error('讀取圖片失敗'));
+    reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error("圖片格式不支援"));
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const maxDim = 800;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round(height * maxDim / width);
-            width = maxDim;
-          } else {
-            width = Math.round(width * maxDim / height);
-            height = maxDim;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
-      img.src = event.target.result;
+      img.onerror = () => reject(new Error('圖片格式不支援或檔案已損毀'));
+      img.onload = () => resolve(reader.result);
+      img.src = reader.result;
     };
     reader.readAsDataURL(file);
   });
@@ -854,7 +842,7 @@ function App() {
     try {
       const toProcess = files.slice(0, remaining);
       const results = [];
-      for (const f of toProcess) results.push(await compressImage(f));
+      for (const f of toProcess) results.push(await readOriginalImage(f));
       setNewProject(prev => ({
         ...prev,
         images: [...prev.images, ...results].slice(0, MAX_IMAGES)
@@ -2793,9 +2781,9 @@ function App() {
     onClick: e => { if(e.target === e.currentTarget) setLightboxUrl(null); }
   }, React.createElement("img", {
     src: lightboxUrl, alt: "成果展示圖片",
-    onLoad: e => { const r = e.currentTarget.getBoundingClientRect(); setLightboxSize({width:r.width,height:r.height}); },
+    onLoad: e => { const r = e.currentTarget.getBoundingClientRect(); setLightboxSize({width:r.width,height:r.height,naturalWidth:e.currentTarget.naturalWidth,naturalHeight:e.currentTarget.naturalHeight}); },
     style: lightboxSize ? {width: lightboxSize.width * lightboxZoom, height: lightboxSize.height * lightboxZoom, maxWidth:'none', maxHeight:'none'} : undefined
-  })), React.createElement("p", {className:"image-viewer-hint"}, "放大後可上下、左右捲動查看細節 · Esc 關閉")), editUserTarget && canAccessAccounts(currentUser) && /*#__PURE__*/React.createElement("div", {
+  })), React.createElement("p", {className:"image-viewer-hint"}, lightboxSize ? `原圖 ${lightboxSize.naturalWidth} × ${lightboxSize.naturalHeight} 像素 · 放大後可捲動查看；超過原圖尺寸不會增加細節 · Esc 關閉` : "圖片載入中…")), editUserTarget && canAccessAccounts(currentUser) && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black/60 flex items-start justify-center p-4 z-50 overflow-y-auto"
   }, /*#__PURE__*/React.createElement("div", {
     className: "app-card p-6 rounded-2xl w-full max-w-md my-8"
@@ -3122,14 +3110,14 @@ function App() {
     className: "text-xs t3 block mb-1"
   }, "📷 成果附圖（最多 ", MAX_IMAGES, " 張，可一次多選，點 ✕ 可刪除）"), /*#__PURE__*/React.createElement("input", {
     type: "file",
-    accept: "image/*",
+    accept: "image/png,image/jpeg,image/webp,image/gif",
     multiple: true,
     onChange: handleImageUpload,
     disabled: newProject.images.length >= MAX_IMAGES,
     className: "w-full p-2 rounded-lg app-input app-file text-xs"
   }), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] t3 mt-1"
-  }, "已上傳 ", newProject.images.length, " / ", MAX_IMAGES, " 張"), newProject.images.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "已上傳 ", newProject.images.length, " / ", MAX_IMAGES, " 張 · 保留原始畫質，每張上限 5 MB；文字截圖建議使用 PNG。"), newProject.images.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "mt-2 flex flex-wrap gap-2"
   }, newProject.images.map((img, idx) => /*#__PURE__*/React.createElement("div", {
     key: idx,

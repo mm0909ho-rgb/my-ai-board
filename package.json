@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "check": "node scripts/check.mjs && node scripts/check-detail-navigation.mjs",
+    "check": "node scripts/check.mjs && node scripts/check-detail-navigation.mjs && node scripts/check-image-upload.mjs",
     "build": "node scripts/build.mjs"
   }
 }

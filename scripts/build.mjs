@@ -1,3 +1,4 @@
+import './check-image-upload.mjs';
 import './check.mjs';
 import './check-detail-navigation.mjs';
 import { mkdirSync, copyFileSync } from 'node:fs';
