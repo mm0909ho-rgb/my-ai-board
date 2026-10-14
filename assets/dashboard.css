@@ -1,0 +1,44 @@
+.dashboard-welcome { display:flex; justify-content:space-between; align-items:center; gap:28px; padding:30px; margin-bottom:24px; background:linear-gradient(120deg,var(--accent-soft),var(--card)); border:1px solid var(--border); border-radius:20px; }
+.dashboard-welcome h2 { margin:10px 0; font-size:clamp(21px,2.5vw,28px); font-weight:800; line-height:1.45; }
+.dashboard-welcome p:not(.page-eyebrow) { color:var(--text-2); font-size:14px; line-height:1.8; }
+.dashboard-shortcuts { display:flex; flex-direction:column; flex-shrink:0; gap:10px; }
+.dashboard-shortcuts button { min-height:44px; padding:10px 18px; border-radius:10px; font-size:14px; font-weight:700; }
+.dashboard-metrics > div { border-radius:16px; padding:24px; }
+.dashboard-metrics .text-4xl { margin:8px 0; font-variant-numeric:tabular-nums; }
+.project-filters { padding:20px; border-radius:16px; }
+.project-filters input,.project-filters select,.project-filters button { min-height:44px; }
+.project-filters > div:first-child { display:grid; grid-template-columns:minmax(220px,2fr) repeat(4,minmax(100px,1fr)) auto; gap:10px; }
+.project-filters input,.project-filters select { width:100%; min-width:0; }
+.project-row { transition:border-color .15s,box-shadow .15s; }
+.project-row:hover { border-top-color:var(--accent); border-right-color:var(--accent); border-bottom-color:var(--accent); }
+.project-row > div:first-child > button { overflow-wrap:anywhere; line-height:1.5; }
+.project-row .row-actions { max-width:310px; }
+.project-result-count { flex-wrap:wrap; }
+.empty-title { margin-bottom:8px; color:var(--text-1); font-size:20px; font-weight:700; }
+.empty-reset { margin-top:20px; padding:10px 20px; border-radius:10px; }
+@media(max-width:1100px) { .project-filters > div:first-child { grid-template-columns:repeat(3,minmax(0,1fr)); } .project-filters input { grid-column:1/-1; } }
+@media(max-width:640px) {
+  .dashboard-nav { position:relative; padding:12px 16px; }
+  .dashboard-nav > div { width:100%; gap:12px; }
+  .dashboard-tabs { flex-wrap:nowrap; overflow-x:auto; width:100%; padding:4px 2px 8px; }
+  .dashboard-tabs button { flex-shrink:0; min-height:44px; }
+  .dashboard-welcome { align-items:stretch; flex-direction:column; padding:22px; gap:20px; }
+  .dashboard-shortcuts { flex-direction:column; }
+  .dashboard-metrics > div { padding:16px; }
+  .project-filters { padding:14px; }
+  .project-filters > div:first-child { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .project-result-count { width:100%; margin-left:0; padding-top:8px; }
+  .project-row .row-actions { max-width:none; justify-content:flex-start; }
+}
+@media(prefers-reduced-motion:reduce) { .project-row { transition:none; } }
+.detail-back-button { display:inline-flex; align-items:center; min-height:48px; padding:10px 20px; border:2px solid var(--accent); border-radius:12px; background:var(--accent); color:var(--accent-text); font-size:18px; font-weight:800; box-shadow:var(--shadow); }
+.detail-back-button:hover { background:var(--accent-strong); }
+.image-viewer { position:fixed; inset:0; z-index:70; display:flex; flex-direction:column; background:rgba(0,0,0,.94); color:#fff; }
+.image-viewer-toolbar { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:10px; padding:14px; border-bottom:1px solid #555; background:#171a24; }
+.image-viewer-toolbar button { min-height:44px; padding:8px 14px; border:1px solid #7f8ba5; border-radius:9px; background:#30394a; color:#fff; font-size:16px; font-weight:700; }
+.image-viewer-toolbar button:disabled { opacity:.4; cursor:not-allowed; }
+.image-viewer-toolbar span { min-width:48px; text-align:center; font-variant-numeric:tabular-nums; }
+.image-viewer-scroll { flex:1; min-height:0; overflow:auto; padding:20px; }
+.image-viewer-scroll img { display:block; max-width:100%; max-height:100%; width:auto; height:auto; margin:auto; object-fit:contain; }
+.image-viewer-hint { padding:10px 16px; text-align:center; color:#d1d7e4; font-size:13px; }
+@media(max-width:640px) { .image-viewer-toolbar { gap:6px; padding:10px; } .image-viewer-toolbar button { padding:8px 10px; font-size:14px; } .image-viewer-scroll { padding:10px; } }
